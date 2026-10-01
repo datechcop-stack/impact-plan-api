@@ -9,6 +9,7 @@ import { ZodError } from "zod";
 import type { Env } from "./env.js";
 import { AppError, toErrorEnvelope } from "./lib/errors.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
+import { authRoutes } from "./modules/auth/auth.routes.js";
 
 export async function buildApp(env: Env): Promise<FastifyInstance> {
   const app = Fastify({
@@ -80,6 +81,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   });
 
   await app.register(healthRoutes);
+  await app.register(authRoutes, { env });
 
   app.get("/openapi.json", async () => app.swagger());
 
