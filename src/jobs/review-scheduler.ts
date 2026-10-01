@@ -1,8 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
-import type { Transporter } from "nodemailer";
 import { applyTransition } from "../domain/lifecycle.js";
 import type { Env } from "../env.js";
-import { sendMail } from "../modules/emails/mailer.js";
+import { type Mailer, sendMail } from "../modules/emails/mailer.js";
 
 function startOfDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -16,8 +15,8 @@ function daysUntil(target: Date, now: Date): number {
 export class ReviewScheduler {
   constructor(
     private readonly db: PrismaClient,
-    private readonly env: Env,
-    private readonly mailer: Transporter,
+    _env: Env,
+    private readonly mailer: Mailer,
   ) {}
 
   async runDaily(now = new Date()): Promise<{ opened: number; reminders: number }> {
@@ -108,7 +107,7 @@ export class ReviewScheduler {
       include: { owner: true },
     });
     for (const plan of plans) {
-      await sendMail(this.mailer, this.env, {
+      await sendMail(this.mailer, {
         to: plan.owner.email,
         subject: `Your ${year} Impact Plan review window is open`,
         html: `<p>Hi ${plan.owner.fullName.split(" ")[0]},</p><p>Your self-assessment window is open. Please complete every entry and submit your plan.</p>`,
@@ -134,7 +133,7 @@ export class ReviewScheduler {
       take: 200,
     });
     for (const user of users) {
-      await sendMail(this.mailer, this.env, {
+      await sendMail(this.mailer, {
         to: user.email,
         subject: `${subject} (${year})`,
         html: `<p>Hi ${user.fullName.split(" ")[0]},</p><p>${subject} for Impact Plan ${year}.</p>`,

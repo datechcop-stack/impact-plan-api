@@ -8,9 +8,9 @@ Backend for **Dev-Afrique Impact Plan** — invite-only annual goal-setting and 
 - Fastify + Zod
 - PostgreSQL + Prisma
 - Argon2id sessions (httpOnly cookies) + CSRF double-submit
-- Nodemailer (SMTP / Mailpit locally)
+- Resend (transactional email)
 - Vitest + Supertest
-- Docker Compose for Postgres + Mailpit
+- Docker Compose for Postgres
 - GitHub Actions (lint, typecheck, test, build)
 
 ## Architecture
@@ -19,7 +19,7 @@ Backend for **Dev-Afrique Impact Plan** — invite-only annual goal-setting and 
 flowchart LR
   Web[Next.js web] -->|cookies + CSRF| API[Fastify API]
   API --> PG[(PostgreSQL)]
-  API --> SMTP[SMTP / Mailpit]
+  API --> Resend[Resend]
   Jobs[ReviewScheduler] --> API
 ```
 
@@ -29,7 +29,7 @@ Layers: `routes → services → repositories/Prisma` with pure domain logic in 
 
 ```bash
 cp .env.example .env
-# Start Postgres + Mailpit (Docker) OR point DATABASE_URL at local Postgres
+# Optional: set RESEND_API_KEY (without it, emails log to the console)
 docker compose up -d   # if Docker is available
 pnpm install
 pnpm db:generate
@@ -40,7 +40,6 @@ pnpm dev
 
 - API: http://localhost:4000
 - Swagger: http://localhost:4000/docs
-- Mailpit UI: http://localhost:8025
 
 ### Seed accounts
 
@@ -58,7 +57,8 @@ pnpm dev
 | `DATABASE_URL`                        | Postgres connection                                                    |
 | `SESSION_SECRET`                      | ≥32 chars cookie secret                                                |
 | `APP_URL` / `API_URL` / `CORS_ORIGIN` | Web/API origins                                                        |
-| `SMTP_*`                              | Mail transport                                                         |
+| `RESEND_API_KEY`                      | Resend API key (omit in local/dev to log emails instead)               |
+| `EMAIL_FROM`                          | From address (must be a verified Resend domain/sender)                 |
 | `OTP_RESEND_COOLDOWN_SECONDS`         | Default `60`                                                           |
 | `DEV_SHORTCUTS`                       | Enables `/auth/dev/login-admin` (never in prod)                        |
 | `EXPOSE_DEV_SECRETS`                  | Returns invite tokens / OTP `devCode` in API responses (never in prod) |

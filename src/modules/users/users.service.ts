@@ -1,16 +1,15 @@
 import type { PrismaClient } from "@prisma/client";
-import type { Transporter } from "nodemailer";
 import type { Env } from "../../env.js";
 import { hashToken } from "../../domain/otp.js";
 import { generateOpaqueToken } from "../../lib/crypto.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
-import { inviteEmailHtml, sendMail } from "../emails/mailer.js";
+import { type Mailer, inviteEmailHtml, sendMail } from "../emails/mailer.js";
 
 export class UsersService {
   constructor(
     private readonly db: PrismaClient,
     private readonly env: Env,
-    private readonly mailer: Transporter,
+    private readonly mailer: Mailer,
   ) {}
 
   async list(query: { q?: string; page: number; pageSize: number }) {
@@ -97,7 +96,7 @@ export class UsersService {
     const admin = await this.db.user.findUniqueOrThrow({ where: { id: actorId } });
     const year = new Date().getFullYear();
     const activateUrl = `${this.env.APP_URL}/activate/${token}`;
-    await sendMail(this.mailer, this.env, {
+    await sendMail(this.mailer, {
       to: user.email,
       subject: `You're invited to set up your ${year} Impact Plan`,
       html: inviteEmailHtml({
@@ -158,7 +157,7 @@ export class UsersService {
     const admin = await this.db.user.findUniqueOrThrow({ where: { id: actorId } });
     const year = new Date().getFullYear();
     const activateUrl = `${this.env.APP_URL}/activate/${token}`;
-    await sendMail(this.mailer, this.env, {
+    await sendMail(this.mailer, {
       to: user.email,
       subject: `You're invited to set up your ${year} Impact Plan`,
       html: inviteEmailHtml({

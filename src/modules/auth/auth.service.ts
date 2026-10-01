@@ -1,4 +1,3 @@
-import type { Transporter } from "nodemailer";
 import type { Env } from "../../env.js";
 import {
   canResendOtp,
@@ -10,7 +9,7 @@ import {
 import { isPasswordValid, passwordsMatch } from "../../domain/passwords.js";
 import { generateOpaqueToken, hashPassword, verifyPassword } from "../../lib/crypto.js";
 import { badRequest, unauthorized, validationError } from "../../lib/errors.js";
-import { inviteEmailHtml, otpEmailHtml, sendMail } from "../emails/mailer.js";
+import { type Mailer, inviteEmailHtml, otpEmailHtml, sendMail } from "../emails/mailer.js";
 import { AuthRepository } from "./auth.repository.js";
 
 const GENERIC_AUTH_MESSAGE = "If that account exists, we sent instructions.";
@@ -20,7 +19,7 @@ export class AuthService {
   constructor(
     private readonly repo: AuthRepository,
     private readonly env: Env,
-    private readonly mailer: Transporter,
+    private readonly mailer: Mailer,
   ) {}
 
   async lookupInvite(token: string) {
@@ -88,7 +87,7 @@ export class AuthService {
       expiresAt,
     });
 
-    await sendMail(this.mailer, this.env, {
+    await sendMail(this.mailer, {
       to: user.email,
       subject: "Your Impact Plan one-time code",
       html: otpEmailHtml(code),
@@ -192,7 +191,7 @@ export class AuthService {
     token: string;
   }) {
     const activateUrl = `${this.env.APP_URL}/activate/${input.token}`;
-    await sendMail(this.mailer, this.env, {
+    await sendMail(this.mailer, {
       to: input.to,
       subject: `You're invited to set up your ${input.year} Impact Plan`,
       html: inviteEmailHtml({

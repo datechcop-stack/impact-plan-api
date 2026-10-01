@@ -21,11 +21,8 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  SMTP_HOST: z.string().default("localhost"),
-  SMTP_PORT: z.coerce.number().int().positive().default(1025),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default("Dev-Afrique Impact Plan <no-reply@devafrique.com>"),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Dev-Afrique Impact Plan <onboarding@resend.dev>"),
   OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   OTP_EXPIRY_MINUTES: z.coerce.number().int().positive().default(10),

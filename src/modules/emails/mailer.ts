@@ -1,4 +1,4 @@
-import nodemailer, { type Transporter } from "nodemailer";
+import { Resend } from "resend";
 import type { Env } from "../../env.js";
 
 export type SendMailInput = {
@@ -8,32 +8,40 @@ export type SendMailInput = {
   text: string;
 };
 
-export function createMailer(env: Env): Transporter {
-  return nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: false,
-    auth: env.SMTP_USER
-      ? {
-          user: env.SMTP_USER,
-          pass: env.SMTP_PASS,
-        }
-      : undefined,
-  });
+export type Mailer = {
+  send: (input: SendMailInput) => Promise<void>;
+};
+
+export function createMailer(env: Env): Mailer {
+  if (!env.RESEND_API_KEY) {
+    return {
+      async send(input) {
+        console.info(`[mail:dev] to=${input.to} subject=${input.subject}`);
+      },
+    };
+  }
+
+  const resend = new Resend(env.RESEND_API_KEY);
+  const from = env.EMAIL_FROM;
+
+  return {
+    async send(input) {
+      const { error } = await resend.emails.send({
+        from,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+      });
+      if (error) {
+        throw new Error(`Resend failed: ${error.message}`);
+      }
+    },
+  };
 }
 
-export async function sendMail(
-  transporter: Transporter,
-  env: Env,
-  input: SendMailInput,
-): Promise<void> {
-  await transporter.sendMail({
-    from: env.SMTP_FROM,
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    text: input.text,
-  });
+export async function sendMail(mailer: Mailer, input: SendMailInput): Promise<void> {
+  await mailer.send(input);
 }
 
 export function inviteEmailHtml(input: {
