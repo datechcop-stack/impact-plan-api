@@ -95,7 +95,11 @@ export class AuthService {
       text: `Your Impact Plan code is ${code}. It expires in ${this.env.OTP_EXPIRY_MINUTES} minutes.`,
     });
 
-    return { sent: true, retryAfterSeconds: this.env.OTP_RESEND_COOLDOWN_SECONDS };
+    return {
+      sent: true,
+      retryAfterSeconds: this.env.OTP_RESEND_COOLDOWN_SECONDS,
+      ...(this.shouldExposeSecrets() ? { devCode: code } : {}),
+    };
   }
 
   async verifyOtp(input: {
@@ -204,6 +208,13 @@ export class AuthService {
 
   getGenericMessage() {
     return GENERIC_AUTH_MESSAGE;
+  }
+
+  private shouldExposeSecrets(): boolean {
+    return (
+      this.env.NODE_ENV !== "production" &&
+      (this.env.EXPOSE_DEV_SECRETS || this.env.DEV_SHORTCUTS || this.env.NODE_ENV === "test")
+    );
   }
 
   private async requireOpenInvitation(token: string) {

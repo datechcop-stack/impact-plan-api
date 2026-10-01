@@ -17,6 +17,10 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  EXPOSE_DEV_SECRETS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
   SMTP_USER: z.string().optional(),

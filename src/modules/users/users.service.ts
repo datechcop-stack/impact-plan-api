@@ -120,7 +120,7 @@ export class UsersService {
 
     return {
       user: this.serialize(user),
-      inviteToken: this.env.NODE_ENV === "test" ? token : undefined,
+      inviteToken: this.shouldExposeSecrets() ? token : undefined,
     };
   }
 
@@ -171,7 +171,7 @@ export class UsersService {
       text: `Activate your Impact Plan account: ${activateUrl}`,
     });
 
-    return { ok: true, inviteToken: this.env.NODE_ENV === "test" ? token : undefined };
+    return { ok: true, inviteToken: this.shouldExposeSecrets() ? token : undefined };
   }
 
   async update(
@@ -246,5 +246,12 @@ export class UsersService {
       inviteExpiresAt: user.invitation?.expiresAt?.toISOString() ?? null,
       activatedAt: user.activatedAt?.toISOString() ?? null,
     };
+  }
+
+  private shouldExposeSecrets(): boolean {
+    return (
+      this.env.NODE_ENV !== "production" &&
+      (this.env.EXPOSE_DEV_SECRETS || this.env.DEV_SHORTCUTS || this.env.NODE_ENV === "test")
+    );
   }
 }

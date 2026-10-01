@@ -53,14 +53,15 @@ pnpm dev
 
 ## Env vars
 
-| Variable                              | Purpose                                         |
-| ------------------------------------- | ----------------------------------------------- |
-| `DATABASE_URL`                        | Postgres connection                             |
-| `SESSION_SECRET`                      | ≥32 chars cookie secret                         |
-| `APP_URL` / `API_URL` / `CORS_ORIGIN` | Web/API origins                                 |
-| `SMTP_*`                              | Mail transport                                  |
-| `OTP_RESEND_COOLDOWN_SECONDS`         | Default `60`                                    |
-| `DEV_SHORTCUTS`                       | Enables `/auth/dev/login-admin` (never in prod) |
+| Variable                              | Purpose                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`                        | Postgres connection                                                    |
+| `SESSION_SECRET`                      | ≥32 chars cookie secret                                                |
+| `APP_URL` / `API_URL` / `CORS_ORIGIN` | Web/API origins                                                        |
+| `SMTP_*`                              | Mail transport                                                         |
+| `OTP_RESEND_COOLDOWN_SECONDS`         | Default `60`                                                           |
+| `DEV_SHORTCUTS`                       | Enables `/auth/dev/login-admin` (never in prod)                        |
+| `EXPOSE_DEV_SECRETS`                  | Returns invite tokens / OTP `devCode` in API responses (never in prod) |
 
 ## Scripts
 
