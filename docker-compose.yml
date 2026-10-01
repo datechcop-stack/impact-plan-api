@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: impact-plan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: impact
+      POSTGRES_PASSWORD: impact
+      POSTGRES_DB: impact_plan
+    ports:
+      - "5432:5432"
+    volumes:
+      - impact_plan_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U impact -d impact_plan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: impact-plan-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  impact_plan_pg:

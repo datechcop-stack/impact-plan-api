@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum AuthMethod {
+  UNSET
+  PASSWORD
+  OTP
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum PlanStatus {
+  DRAFT
+  LOCKED
+  PARTLY_UNLOCKED
+  UNLOCKED
+  REVIEW_OPEN
+  IN_REVIEW
+  FINALIZED
+}
+
+enum ComponentType {
+  PROJECTS
+  BD
+  TECH_PERSONAL
+  COP
+}
+
+enum ComponentLockState {
+  LOCKED
+  UNLOCKED
+}
+
+enum EditRequestScope {
+  WHOLE
+  COMPONENT
+}
+
+enum EditRequestStatus {
+  PENDING
+  DECLINED
+  UNLOCKED
+  COMPLETED
+}
+
+enum SelfAssessmentResult {
+  ACHIEVED
+  PARTLY
+  NOT
+}
+
+enum PmReviewStatus {
+  DRAFT
+  REVIEWED
+}
+
+enum OtpPurpose {
+  ACTIVATION
+  LOGIN
+  PASSWORD_RESET
+}
+
+enum ReviewCycleAudience {
+  ALL_WITH_PLAN
+  SELECTED
+}
+
+enum ReviewCycleStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  fullName       String
+  jobTitle       String?
+  role           Role       @default(STAFF)
+  authMethod     AuthMethod @default(UNSET)
+  passwordHash   String?
+  lineManagerId  String?
+  status         UserStatus @default(INVITED)
+  activatedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  lineManager    User?      @relation("LineReports", fields: [lineManagerId], references: [id])
+  reports        User[]     @relation("LineReports")
+
+  invitationsSent Invitation[] @relation("InvitedBy")
+  invitation      Invitation?
+  sessions        Session[]
+  otpChallenges   OtpChallenge[]
+
+  ownedPlans      Plan[]      @relation("PlanOwner")
+  createdPlans    Plan[]      @relation("PlanCreatedBy")
+  managedEntries  PlanEntry[] @relation("EntryManager")
+  editRequests    EditRequest[] @relation("EditRequester")
+  editDecisions   EditRequest[] @relation("EditDecider")
+  changeLogs      ChangeLog[]
+  pmReviews       PmReview[]
+  reviewCycleParticipants ReviewCycleParticipant[]
+
+  @@index([lineManagerId])
+  @@index([status])
+}
+
+model Invitation {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  tokenHash        String
+  expiresAt        DateTime
+  usedAt           DateTime?
+  remindCreatePlan Boolean   @default(true)
+  invitedById      String
+  createdAt        DateTime  @default(now())
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy User @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+model OtpChallenge {
+  id           String     @id @default(cuid())
+  userId       String
+  purpose      OtpPurpose
+  codeHash     String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attemptCount Int        @default(0)
+  lastSentAt   DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Plan {
+  id                 String     @id @default(cuid())
+  ownerId            String
+  year               Int
+  status             PlanStatus @default(DRAFT)
+  createdById        String
+  lineManagerComment String?
+  submittedAt        DateTime?
+  finalizedAt        DateTime?
+  finalScore         Decimal?   @db.Decimal(5, 2)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  owner     User @relation("PlanOwner", fields: [ownerId], references: [id])
+  createdBy User @relation("PlanCreatedBy", fields: [createdById], references: [id])
+
+  components   PlanComponent[]
+  editRequests EditRequest[]
+  changeLogs   ChangeLog[]
+
+  @@unique([ownerId, year])
+  @@index([status])
+  @@index([year])
+}
+
+model PlanComponent {
+  id        String             @id @default(cuid())
+  planId    String
+  type      ComponentType
+  enabled   Boolean            @default(true)
+  weight    Int                @default(0)
+  lockState ComponentLockState @default(LOCKED)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  plan    Plan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  entries PlanEntry[]
+
+  @@unique([planId, type])
+}
+
+model PlanEntry {
+  id              String   @id @default(cuid())
+  componentId     String
+  title           String
+  objective       String
+  successCriteria String
+  managerId       String
+  dueDate         DateTime @db.Date
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  component       PlanComponent    @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  manager         User             @relation("EntryManager", fields: [managerId], references: [id])
+  selfAssessment  SelfAssessment?
+  pmReview        PmReview?
+
+  @@index([managerId])
+  @@index([componentId])
+}
+
+model SelfAssessment {
+  id          String                @id @default(cuid())
+  entryId     String                @unique
+  result      SelfAssessmentResult
+  resultText  String
+  evidenceUrl String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  entry PlanEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+}
+
+model PmReview {
+  id         String         @id @default(cuid())
+  entryId    String         @unique
+  reviewerId String
+  score      Int?
+  comment    String?
+  status     PmReviewStatus @default(DRAFT)
+  reviewedAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  entry    PlanEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  reviewer User      @relation(fields: [reviewerId], references: [id])
+
+  @@index([reviewerId])
+  @@index([status])
+}
+
+model EditRequest {
+  id            String            @id @default(cuid())
+  planId        String
+  requesterId   String
+  scope         EditRequestScope
+  componentType ComponentType?
+  changeTypes   String[]
+  reason        String
+  status        EditRequestStatus @default(PENDING)
+  decidedById   String?
+  decidedAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  plan      Plan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  requester User  @relation("EditRequester", fields: [requesterId], references: [id])
+  decidedBy User? @relation("EditDecider", fields: [decidedById], references: [id])
+
+  @@index([status])
+  @@index([planId])
+}
+
+model ChangeLog {
+  id        String   @id @default(cuid())
+  planId    String?
+  actorId   String
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  plan  Plan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  actor User  @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+  @@index([planId])
+}
+
+model ReviewCycle {
+  id                     String              @id @default(cuid())
+  year                   Int                 @unique
+  windowOpens            DateTime            @db.Date
+  selfAssessmentDeadline DateTime            @db.Date
+  pmScoringDeadline      DateTime            @db.Date
+  finalizeDeadline       DateTime            @db.Date
+  audience               ReviewCycleAudience @default(ALL_WITH_PLAN)
+  remindOnOpen           Boolean             @default(true)
+  remindBeforeDeadlines  Boolean             @default(true)
+  weeklyLmSummary        Boolean             @default(false)
+  status                 ReviewCycleStatus   @default(SCHEDULED)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  participants ReviewCycleParticipant[]
+  reminderLogs ReminderLog[]
+}
+
+model ReviewCycleParticipant {
+  id            String @id @default(cuid())
+  reviewCycleId String
+  userId        String
+
+  reviewCycle ReviewCycle @relation(fields: [reviewCycleId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewCycleId, userId])
+}
+
+model ReminderLog {
+  id            String   @id @default(cuid())
+  reviewCycleId String
+  kind          String
+  sentAt        DateTime @default(now())
+  metadata      Json?
+
+  reviewCycle ReviewCycle @relation(fields: [reviewCycleId], references: [id], onDelete: Cascade)
+
+  @@index([reviewCycleId, kind])
+}
