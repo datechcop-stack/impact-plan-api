@@ -10,6 +10,11 @@ import type { Env } from "./env.js";
 import { AppError, toErrorEnvelope } from "./lib/errors.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { usersRoutes } from "./modules/users/users.routes.js";
+import { adminOverviewRoutes } from "./modules/admin/overview.routes.js";
+import { plansRoutes } from "./modules/plans/plans.routes.js";
+import { editRequestsRoutes } from "./modules/edit-requests/edit-requests.routes.js";
+import { reviewCycleRoutes } from "./modules/review-cycle/review-cycle.routes.js";
 
 export async function buildApp(env: Env): Promise<FastifyInstance> {
   const app = Fastify({
@@ -82,6 +87,11 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(authRoutes, { env });
+  await app.register(usersRoutes, { env });
+  await app.register(adminOverviewRoutes, { env });
+  await app.register(plansRoutes, { env });
+  await app.register(editRequestsRoutes, { env });
+  await app.register(reviewCycleRoutes, { env });
 
   app.get("/openapi.json", async () => app.swagger());
 
