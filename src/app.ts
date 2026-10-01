@@ -18,6 +18,7 @@ import { reviewCycleRoutes } from "./modules/review-cycle/review-cycle.routes.js
 import { staffPlanRoutes } from "./modules/staff-plan/staff-plan.routes.js";
 import { pmRoutes } from "./modules/pm/pm.routes.js";
 import { lineManagerRoutes } from "./modules/line-manager/lm.routes.js";
+import { jobsRoutes } from "./modules/admin/jobs.routes.js";
 
 export async function buildApp(env: Env): Promise<FastifyInstance> {
   const app = Fastify({
@@ -98,6 +99,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   await app.register(staffPlanRoutes, { env });
   await app.register(pmRoutes, { env });
   await app.register(lineManagerRoutes, { env });
+  await app.register(jobsRoutes, { env });
 
   app.get("/openapi.json", async () => app.swagger());
 
