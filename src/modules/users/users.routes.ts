@@ -3,7 +3,7 @@ import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { createMailer } from "../emails/mailer.js";
 import { requireAdmin } from "../auth/require-admin.js";
-import { requireCsrf } from "../auth/auth.routes.js";
+import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
 import { inviteUserSchema, listUsersQuerySchema, updateUserSchema } from "./users.schemas.js";
 import { UsersService } from "./users.service.js";
 
@@ -63,7 +63,7 @@ export const usersRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
     },
   );
 
-  app.get("/users/lookup", { preHandler: requireAdmin }, async (request) => {
+  app.get("/users/lookup", { preHandler: authenticateRequest }, async (request) => {
     const q = String((request.query as { q?: string }).q ?? "");
     return service.lookup(q);
   });
