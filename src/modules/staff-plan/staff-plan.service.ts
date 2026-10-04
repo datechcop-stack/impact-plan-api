@@ -58,11 +58,11 @@ export class StaffPlanService {
       },
     });
 
-    if (!plan) {
-      throw notFound("No Impact Plan found for this year.");
-    }
-
     const reviewCycle = await this.db.reviewCycle.findUnique({ where: { year } });
+
+    if (!plan) {
+      return { plan: null, reviewCycle, score: null };
+    }
     const scoredEntries = plan.components.flatMap((component) =>
       component.entries
         .filter((entry) => entry.pmReview?.status === "REVIEWED" && entry.pmReview.score != null)
@@ -231,7 +231,7 @@ export class StaffPlanService {
       });
     });
 
-    return this.getMyPlan(userId, year);
+    return this.requireMyPlan(userId, year);
   }
 
   async saveSelfAssessment(
@@ -266,7 +266,7 @@ export class StaffPlanService {
       },
     });
 
-    return this.getMyPlan(userId, entry.component.plan.year);
+    return this.requireMyPlan(userId, entry.component.plan.year);
   }
 
   async submit(userId: string, year = new Date().getFullYear()) {
@@ -309,7 +309,15 @@ export class StaffPlanService {
       }),
     ]);
 
-    return this.getMyPlan(userId, year);
+    return this.requireMyPlan(userId, year);
+  }
+
+  private async requireMyPlan(userId: string, year: number) {
+    const result = await this.getMyPlan(userId, year);
+    if (!result.plan) {
+      throw notFound("Plan not found.");
+    }
+    return result;
   }
 
   private async requireOwnedPlan(userId: string, year: number) {

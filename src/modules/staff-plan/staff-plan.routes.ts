@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
+import { createMyPlanSchema } from "../plans/plans.schemas.js";
+import { PlansService } from "../plans/plans.service.js";
 import {
   editRequestCreateSchema,
   saveEntriesSchema,
@@ -12,6 +14,7 @@ import { StaffPlanService } from "./staff-plan.service.js";
 
 export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
   const service = new StaffPlanService(prisma);
+  const plansService = new PlansService(prisma);
 
   app.get("/me/plan", { preHandler: authenticateRequest }, async (request) => {
     const year = z.coerce
@@ -21,6 +24,26 @@ export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => 
       .parse((request.query as { year?: string }).year);
     return service.getMyPlan(request.authUser!.id, year ?? new Date().getFullYear());
   });
+
+  app.post(
+    "/me/plan",
+    {
+      preHandler: [
+        authenticateRequest,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const body = createMyPlanSchema.parse(request.body);
+      const userId = request.authUser!.id;
+      return plansService.create(userId, {
+        ...body,
+        ownerId: userId,
+      });
+    },
+  );
 
   app.post(
     "/me/plan/edit-requests",

@@ -93,12 +93,12 @@ Product API routes are versioned under `/v1` (e.g. `/v1/auth/login`, `/v1/admin/
 
 ## Permissions
 
-| Actor        | Can                                                 |
-| ------------ | --------------------------------------------------- |
-| Owner        | View own plan, request edits, self-assess when open |
-| Tagged PM    | Score own tagged entries after submit               |
-| Line manager | Review/finalize direct reports                      |
-| Admin        | Users, plans, unlock/relock, review cycle           |
+| Actor        | Can                                                                    |
+| ------------ | ---------------------------------------------------------------------- |
+| Owner        | Create own plan, view/edit draft, request edits, self-assess when open |
+| Tagged PM    | Score own tagged entries after submit                                  |
+| Line manager | Review/finalize direct reports                                         |
+| Admin        | Users, plans, unlock/relock, review cycle                              |
 
 ## Testing & CI
 
