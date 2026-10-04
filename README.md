@@ -60,12 +60,21 @@ pnpm dev
 | `RESEND_API_KEY`                      | Resend API key (omit in local/dev to log emails instead)               |
 | `EMAIL_FROM`                          | From address (must be a verified Resend domain/sender)                 |
 | `OTP_RESEND_COOLDOWN_SECONDS`         | Default `60`                                                           |
-| `DEV_SHORTCUTS`                       | Enables `/auth/dev/login-admin` (never in prod)                        |
 | `EXPOSE_DEV_SECRETS`                  | Returns invite tokens / OTP `devCode` in API responses (never in prod) |
 
 ## Scripts
 
-`pnpm dev` · `pnpm build` · `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm db:*` · `pnpm openapi:export`
+`pnpm dev` · `pnpm build` · `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm db:*` · `pnpm create-admin` · `pnpm openapi:export`
+
+### Production admin
+
+Do **not** run the demo seed in production. After migrate:
+
+```bash
+pnpm create-admin --email you@org.com --password 'YourPass1!' --name 'Ada Okonkwo'
+```
+
+Then sign in at `/sign-in` → `POST /auth/login` → redirected to `/admin` when `user.role === "ADMIN"`.
 
 ## Plan lifecycle
 
@@ -98,10 +107,11 @@ Unit tests cover scoring, lifecycle, passwords, OTP. GitHub Actions runs lint/ty
 - Release migrate: `pnpm db:migrate:deploy`
 - Start: `pnpm start` (listens on `HOST`/`PORT`, health at `GET /health`)
 - Set `COOKIE_SECURE=true` behind HTTPS
-- Set `DEV_SHORTCUTS=false` and `EXPOSE_DEV_SECRETS=false`
+- Set `EXPOSE_DEV_SECRETS=false`
+- Create the first admin with `pnpm create-admin` (see above)
 - Set `APP_URL` / `CORS_ORIGIN` to the public web origin; `API_URL` to the public API origin
 - Set `RESEND_API_KEY` + a verified `EMAIL_FROM` (without Resend, emails only log)
-- Schedule daily: `POST /admin/jobs/run-daily` with header `x-cron-secret: $CRON_SECRET` (or `Authorization: Bearer $CRON_SECRET`). Admins can still trigger it with session + CSRF.
+- Schedule daily (as an admin session + CSRF): `POST /admin/jobs/run-daily`
 
 ### Render
 

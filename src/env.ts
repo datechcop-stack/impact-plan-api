@@ -13,10 +13,6 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  DEV_SHORTCUTS: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
   EXPOSE_DEV_SECRETS: z
     .enum(["true", "false"])
     .default("false")

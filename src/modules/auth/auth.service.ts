@@ -212,7 +212,7 @@ export class AuthService {
   private shouldExposeSecrets(): boolean {
     return (
       this.env.NODE_ENV !== "production" &&
-      (this.env.EXPOSE_DEV_SECRETS || this.env.DEV_SHORTCUTS || this.env.NODE_ENV === "test")
+      (this.env.EXPOSE_DEV_SECRETS || this.env.NODE_ENV === "test")
     );
   }
 

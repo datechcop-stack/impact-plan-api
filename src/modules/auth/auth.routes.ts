@@ -157,7 +157,7 @@ export const authRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =>
     return result;
   });
 
-  app.post("/auth/login/password", async (request, reply) => {
+  app.post("/auth/login", async (request, reply) => {
     const body = loginPasswordSchema.parse(request.body);
     const result = await service.loginWithPassword(body.email, body.password);
     setSessionCookie(reply, opts.env, result.sessionToken, result.expiresAt);
@@ -193,19 +193,4 @@ export const authRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =>
       return { ok: true };
     },
   );
-
-  if (opts.env.DEV_SHORTCUTS && opts.env.NODE_ENV !== "production") {
-    app.post("/auth/dev/login-admin", async (_request, reply) => {
-      const admin = await prisma.user.findFirst({
-        where: { role: "ADMIN", status: "ACTIVE" },
-      });
-      if (!admin) {
-        throw unauthorized("No admin user seeded yet.");
-      }
-      const result = await service.issueSession(admin.id);
-      setSessionCookie(reply, opts.env, result.sessionToken, result.expiresAt);
-      setCsrfCookie(reply, opts.env);
-      return { user: result.user };
-    });
-  }
 };
