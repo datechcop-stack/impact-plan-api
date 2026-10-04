@@ -1,5 +1,11 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
 import { applyTransition } from "../../domain/lifecycle.js";
+import {
+  assertObjectivesValid,
+  entryObjectivesInclude,
+  objectivesCreateData,
+  type ObjectiveInput,
+} from "../../domain/objectives.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
 
@@ -12,8 +18,7 @@ type ComponentInput = {
 type EntryInput = {
   type: ComponentType;
   title: string;
-  objective: string;
-  successCriteria: string;
+  objectives: ObjectiveInput[];
   managerId: string;
   dueDate: string;
 };
@@ -95,6 +100,7 @@ export class PlansService {
                 manager: { select: { id: true, fullName: true } },
                 selfAssessment: true,
                 pmReview: true,
+                ...entryObjectivesInclude,
               },
               orderBy: { sortOrder: "asc" },
             },
@@ -144,6 +150,10 @@ export class PlansService {
       if (entry.managerId === input.ownerId) {
         throw badRequest("Tagged manager cannot be the plan owner.");
       }
+      const objectivesError = assertObjectivesValid(entry.objectives);
+      if (objectivesError) {
+        throw badRequest(objectivesError);
+      }
     }
 
     const status = input.lock ? applyTransition("DRAFT", "LOCK") : "DRAFT";
@@ -177,11 +187,10 @@ export class PlansService {
           data: {
             componentId: component.id,
             title: entry.title,
-            objective: entry.objective,
-            successCriteria: entry.successCriteria,
             managerId: entry.managerId,
             dueDate: new Date(entry.dueDate),
             sortOrder: index,
+            objectives: objectivesCreateData(entry.objectives),
           },
         });
       }
@@ -247,6 +256,10 @@ export class PlansService {
           if (entry.managerId === plan.ownerId) {
             throw badRequest("Tagged manager cannot be the plan owner.");
           }
+          const objectivesError = assertObjectivesValid(entry.objectives);
+          if (objectivesError) {
+            throw badRequest(objectivesError);
+          }
           const component = byType.get(entry.type);
           if (!component?.enabled) {
             throw badRequest(`Component ${entry.type} is not enabled.`);
@@ -255,11 +268,10 @@ export class PlansService {
             data: {
               componentId: component.id,
               title: entry.title,
-              objective: entry.objective,
-              successCriteria: entry.successCriteria,
               managerId: entry.managerId,
               dueDate: new Date(entry.dueDate),
               sortOrder: index,
+              objectives: objectivesCreateData(entry.objectives),
             },
           });
         }

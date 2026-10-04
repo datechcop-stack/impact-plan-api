@@ -53,8 +53,10 @@ async function ensurePlan(input: {
   entries: Array<{
     type: ComponentType;
     title: string;
-    objective: string;
-    successCriteria: string;
+    /** Preferred nested shape. Flat objective/successCriteria still accepted for seeds. */
+    objectives?: Array<{ text: string; successCriteria: string[] }>;
+    objective?: string;
+    successCriteria?: string;
     managerEmail: string;
     dueDate: string;
     selfAssessment?: {
@@ -110,15 +112,30 @@ async function ensurePlan(input: {
       where: { email: entry.managerEmail },
     });
     const component = byType.get(entry.type)!;
+    const objectives =
+      entry.objectives ??
+      (entry.objective && entry.successCriteria
+        ? [{ text: entry.objective, successCriteria: [entry.successCriteria] }]
+        : []);
     const created = await prisma.planEntry.create({
       data: {
         componentId: component.id,
         title: entry.title,
-        objective: entry.objective,
-        successCriteria: entry.successCriteria,
         managerId: manager.id,
         dueDate: new Date(entry.dueDate),
         sortOrder: index,
+        objectives: {
+          create: objectives.map((objective, objectiveIndex) => ({
+            text: objective.text,
+            sortOrder: objectiveIndex,
+            successCriteria: {
+              create: objective.successCriteria.map((text, criterionIndex) => ({
+                text,
+                sortOrder: criterionIndex,
+              })),
+            },
+          })),
+        },
       },
     });
     if (entry.selfAssessment) {
@@ -279,8 +296,19 @@ async function main(): Promise<void> {
       {
         type: "PROJECTS",
         title: "Policy Vault: onboard 3 new countries",
-        objective: "Expand Policy Vault coverage to Ghana, Kenya and Zambia.",
-        successCriteria: "300+ policies uploaded and verified per country by Q4.",
+        objectives: [
+          {
+            text: "Expand Policy Vault coverage to Ghana, Kenya and Zambia.",
+            successCriteria: [
+              "300+ policies uploaded and verified per country by Q4.",
+              "Country launch checklists signed off by local leads.",
+            ],
+          },
+          {
+            text: "Train in-country champions to sustain uploads.",
+            successCriteria: ["At least 2 champions trained and active in each country."],
+          },
+        ],
         managerEmail: "c.okafor@devafrique.com",
         dueDate: "2026-11-30",
       },

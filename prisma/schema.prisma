@@ -211,24 +211,50 @@ model PlanComponent {
 }
 
 model PlanEntry {
-  id              String   @id @default(cuid())
-  componentId     String
-  title           String
-  objective       String
-  successCriteria String
-  managerId       String
-  dueDate         DateTime @db.Date
-  sortOrder       Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  componentId String
+  title       String
+  managerId   String
+  dueDate     DateTime @db.Date
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  component       PlanComponent    @relation(fields: [componentId], references: [id], onDelete: Cascade)
-  manager         User             @relation("EntryManager", fields: [managerId], references: [id])
-  selfAssessment  SelfAssessment?
-  pmReview        PmReview?
+  component      PlanComponent    @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  manager        User             @relation("EntryManager", fields: [managerId], references: [id])
+  objectives     PlanObjective[]
+  selfAssessment SelfAssessment?
+  pmReview       PmReview?
 
   @@index([managerId])
   @@index([componentId])
+}
+
+model PlanObjective {
+  id        String   @id @default(cuid())
+  entryId   String
+  text      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entry           PlanEntry               @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  successCriteria PlanSuccessCriterion[]
+
+  @@index([entryId])
+}
+
+model PlanSuccessCriterion {
+  id          String   @id @default(cuid())
+  objectiveId String
+  text        String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  objective PlanObjective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@index([objectiveId])
 }
 
 model SelfAssessment {

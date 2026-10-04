@@ -1,5 +1,11 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
 import { applyTransition, isOwnerEditable, isSelfAssessmentOpen } from "../../domain/lifecycle.js";
+import {
+  assertObjectivesValid,
+  entryObjectivesInclude,
+  objectivesCreateData,
+  type ObjectiveInput,
+} from "../../domain/objectives.js";
 import { computePlanScore } from "../../domain/scoring.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 
@@ -7,8 +13,7 @@ type EntryInput = {
   id?: string;
   componentType: ComponentType;
   title: string;
-  objective: string;
-  successCriteria: string;
+  objectives: ObjectiveInput[];
   managerId: string;
   dueDate: string;
   sortOrder?: number;
@@ -39,6 +44,7 @@ export class StaffPlanService {
                 pmReview: {
                   include: { reviewer: { select: { id: true, fullName: true } } },
                 },
+                ...entryObjectivesInclude,
               },
               orderBy: { sortOrder: "asc" },
             },
@@ -168,6 +174,10 @@ export class StaffPlanService {
       if (entry.managerId === userId) {
         throw badRequest("Tagged manager cannot be the plan owner.");
       }
+      const objectivesError = assertObjectivesValid(entry.objectives);
+      if (objectivesError) {
+        throw badRequest(objectivesError);
+      }
     }
 
     const componentByType = new Map(plan.components.map((c) => [c.type, c]));
@@ -191,16 +201,16 @@ export class StaffPlanService {
           throw badRequest(`Unknown component ${entry.componentType}`);
         }
         if (entry.id) {
+          await tx.planObjective.deleteMany({ where: { entryId: entry.id } });
           await tx.planEntry.update({
             where: { id: entry.id },
             data: {
               title: entry.title,
-              objective: entry.objective,
-              successCriteria: entry.successCriteria,
               managerId: entry.managerId,
               dueDate: new Date(entry.dueDate),
               sortOrder: entry.sortOrder ?? index,
               componentId: component.id,
+              objectives: objectivesCreateData(entry.objectives),
             },
           });
         } else {
@@ -208,11 +218,10 @@ export class StaffPlanService {
             data: {
               componentId: component.id,
               title: entry.title,
-              objective: entry.objective,
-              successCriteria: entry.successCriteria,
               managerId: entry.managerId,
               dueDate: new Date(entry.dueDate),
               sortOrder: entry.sortOrder ?? index,
+              objectives: objectivesCreateData(entry.objectives),
             },
           });
         }

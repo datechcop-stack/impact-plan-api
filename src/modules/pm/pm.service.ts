@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { isPmScoringOpen } from "../../domain/lifecycle.js";
+import { entryObjectivesInclude } from "../../domain/objectives.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 
 export class PmService {
@@ -152,8 +153,7 @@ export class PmService {
       entry: {
         id: entry.id,
         title: entry.title,
-        objective: entry.objective,
-        successCriteria: entry.successCriteria,
+        objectives: entry.objectives,
         dueDate: entry.dueDate.toISOString().slice(0, 10),
         componentType: entry.component.type,
         weight: entry.component.weight,
@@ -245,6 +245,7 @@ export class PmService {
       include: {
         selfAssessment: true,
         pmReview: true,
+        ...entryObjectivesInclude,
         component: {
           include: {
             plan: {

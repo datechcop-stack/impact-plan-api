@@ -63,6 +63,22 @@ export const usersRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
     },
   );
 
+  app.delete(
+    "/admin/users/:id",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return service.remove(request.authUser!.id, id);
+    },
+  );
+
   app.get("/users/lookup", { preHandler: authenticateRequest }, async (request) => {
     const q = String((request.query as { q?: string }).q ?? "");
     return service.lookup(q);

@@ -9,12 +9,20 @@ export const editRequestCreateSchema = z.object({
   reason: z.string().min(5).max(2000),
 });
 
+const successCriterionInput = z.object({
+  text: z.string().min(1),
+});
+
+const objectiveInput = z.object({
+  text: z.string().min(1),
+  successCriteria: z.array(successCriterionInput).min(1),
+});
+
 export const entryUpsertSchema = z.object({
   id: z.string().cuid().optional(),
   componentType: z.enum(["PROJECTS", "BD", "TECH_PERSONAL", "COP"]),
   title: z.string().min(1),
-  objective: z.string().min(1),
-  successCriteria: z.string().min(1),
+  objectives: z.array(objectiveInput).min(1),
   managerId: z.string().cuid(),
   dueDate: z.string().date(),
   sortOrder: z.number().int().nonnegative().optional(),

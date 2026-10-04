@@ -6,11 +6,19 @@ const componentInput = z.object({
   weight: z.number().int().min(0).max(100),
 });
 
+const successCriterionInput = z.object({
+  text: z.string().min(1),
+});
+
+const objectiveInput = z.object({
+  text: z.string().min(1),
+  successCriteria: z.array(successCriterionInput).min(1),
+});
+
 const entryInput = z.object({
   type: z.enum(["PROJECTS", "BD", "TECH_PERSONAL", "COP"]),
   title: z.string().min(1),
-  objective: z.string().min(1),
-  successCriteria: z.string().min(1),
+  objectives: z.array(objectiveInput).min(1),
   managerId: z.string().cuid(),
   dueDate: z.string().date(),
 });

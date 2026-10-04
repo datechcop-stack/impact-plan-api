@@ -199,6 +199,108 @@ export class UsersService {
     return this.serialize(updated);
   }
 
+  /**
+   * Remove a staff member from the system.
+   * Never-activated invites with no plan history are hard-deleted.
+   * Otherwise the account is disabled and sessions are revoked.
+   */
+  async remove(actorId: string, userId: string) {
+    if (actorId === userId) {
+      throw badRequest("You cannot remove your own account.");
+    }
+
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      include: {
+        invitation: true,
+        ownedPlans: { select: { id: true }, take: 1 },
+        createdPlans: { select: { id: true }, take: 1 },
+        managedEntries: { select: { id: true }, take: 1 },
+        reports: { select: { id: true }, take: 1 },
+        pmReviews: { select: { id: true }, take: 1 },
+        editRequests: { select: { id: true }, take: 1 },
+        editDecisions: { select: { id: true }, take: 1 },
+        changeLogs: { select: { id: true }, take: 1 },
+        invitationsSent: { select: { id: true }, take: 1 },
+        reviewCycleParticipants: { select: { id: true }, take: 1 },
+      },
+    });
+    if (!user) {
+      throw notFound("User not found.");
+    }
+    if (user.status === "DISABLED") {
+      throw badRequest("This user is already removed.");
+    }
+
+    if (user.role === "ADMIN" && user.status === "ACTIVE") {
+      const otherActiveAdmins = await this.db.user.count({
+        where: {
+          id: { not: userId },
+          role: "ADMIN",
+          status: "ACTIVE",
+        },
+      });
+      if (otherActiveAdmins === 0) {
+        throw badRequest("Cannot remove the last active admin.");
+      }
+    }
+
+    const hasHistory =
+      user.ownedPlans.length > 0 ||
+      user.createdPlans.length > 0 ||
+      user.managedEntries.length > 0 ||
+      user.reports.length > 0 ||
+      user.pmReviews.length > 0 ||
+      user.editRequests.length > 0 ||
+      user.editDecisions.length > 0 ||
+      user.changeLogs.length > 0 ||
+      user.invitationsSent.length > 0 ||
+      user.reviewCycleParticipants.length > 0;
+
+    if (user.status === "INVITED" && !hasHistory) {
+      await this.db.$transaction(async (tx) => {
+        await tx.user.delete({ where: { id: userId } });
+        await tx.changeLog.create({
+          data: {
+            actorId,
+            action: "USER_REMOVED",
+            metadata: { userId, email: user.email, mode: "deleted" },
+          },
+        });
+      });
+      return { ok: true, mode: "deleted" as const };
+    }
+
+    await this.db.$transaction(async (tx) => {
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          status: "DISABLED",
+          passwordHash: null,
+          authMethod: "UNSET",
+        },
+      });
+      // Clear line-manager links so disabled users stop appearing as managers.
+      await tx.user.updateMany({
+        where: { lineManagerId: userId },
+        data: { lineManagerId: null },
+      });
+      await tx.changeLog.create({
+        data: {
+          actorId,
+          action: "USER_REMOVED",
+          metadata: { userId, email: user.email, mode: "disabled" },
+        },
+      });
+    });
+
+    return { ok: true, mode: "disabled" as const };
+  }
+
   async lookup(q: string) {
     return this.db.user.findMany({
       where: {
