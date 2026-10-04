@@ -18,7 +18,7 @@ const envSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default("Dev-Afrique Impact Plan <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().default("Dev-Afrique Impact Plan <noreply@mail.dev-afrique.com>"),
   OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   OTP_EXPIRY_MINUTES: z.coerce.number().int().positive().default(10),
