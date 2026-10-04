@@ -76,7 +76,9 @@ pnpm create-admin --email you@org.com --password 'YourPass1!' --name 'Ada Okonkw
 
 Then sign in at `/sign-in` → `POST /v1/auth/login` → redirected to `/admin` when `user.role === "ADMIN"`.
 
-Product API routes are versioned under `/v1` (e.g. `/v1/auth/login`, `/v1/admin/plans`). `GET /health`, `/docs`, and `/openapi.json` stay unversioned.
+Product API routes are versioned under `/v1` (e.g. `/v1/auth/login`, `/v1/admin/plans`).  
+`/api/v1/*` is also accepted as an alias (same handlers) for clients that keep the web proxy prefix.  
+`GET /health`, `/docs`, and `/openapi.json` stay unversioned.
 
 ## Plan lifecycle
 
