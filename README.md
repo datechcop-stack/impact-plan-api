@@ -93,7 +93,21 @@ Unit tests cover scoring, lifecycle, passwords, OTP. GitHub Actions runs lint/ty
 
 ## Deployment notes
 
+- Node 20+
+- Build: `pnpm install --frozen-lockfile && pnpm build`
+- Release migrate: `pnpm db:migrate:deploy`
+- Start: `pnpm start` (listens on `HOST`/`PORT`, health at `GET /health`)
 - Set `COOKIE_SECURE=true` behind HTTPS
-- Disable `DEV_SHORTCUTS`
-- Run `pnpm db:migrate:deploy` on release
-- Schedule `POST /admin/jobs/run-daily` (or call `ReviewScheduler.runDaily`) once per day
+- Set `DEV_SHORTCUTS=false` and `EXPOSE_DEV_SECRETS=false`
+- Set `APP_URL` / `CORS_ORIGIN` to the public web origin; `API_URL` to the public API origin
+- Set `RESEND_API_KEY` + a verified `EMAIL_FROM` (without Resend, emails only log)
+- Schedule daily: `POST /admin/jobs/run-daily` with header `x-cron-secret: $CRON_SECRET` (or `Authorization: Bearer $CRON_SECRET`). Admins can still trigger it with session + CSRF.
+
+### Render
+
+| Setting       | Value                                          |
+| ------------- | ---------------------------------------------- |
+| Build Command | `pnpm install --frozen-lockfile && pnpm build` |
+| Start Command | `pnpm start:prod`                              |
+
+`postinstall` and `build` both run `prisma generate`. If Render only runs `tsc` / `typecheck`, you get `PrismaClient` missing and a cascade of implicit-`any` errors.
