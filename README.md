@@ -74,7 +74,9 @@ Do **not** run the demo seed in production. After migrate:
 pnpm create-admin --email you@org.com --password 'YourPass1!' --name 'Ada Okonkwo'
 ```
 
-Then sign in at `/sign-in` → `POST /auth/login` → redirected to `/admin` when `user.role === "ADMIN"`.
+Then sign in at `/sign-in` → `POST /v1/auth/login` → redirected to `/admin` when `user.role === "ADMIN"`.
+
+Product API routes are versioned under `/v1` (e.g. `/v1/auth/login`, `/v1/admin/plans`). `GET /health`, `/docs`, and `/openapi.json` stay unversioned.
 
 ## Plan lifecycle
 
@@ -111,7 +113,7 @@ Unit tests cover scoring, lifecycle, passwords, OTP. GitHub Actions runs lint/ty
 - Create the first admin with `pnpm create-admin` (see above)
 - Set `APP_URL` / `CORS_ORIGIN` to the public web origin; `API_URL` to the public API origin
 - Set `RESEND_API_KEY` + a verified `EMAIL_FROM` (without Resend, emails only log)
-- Schedule daily (as an admin session + CSRF): `POST /admin/jobs/run-daily`
+- Schedule daily (as an admin session + CSRF): `POST /v1/admin/jobs/run-daily`
 
 ### Render
 

@@ -90,18 +90,25 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
       .send(toErrorEnvelope(new AppError("INTERNAL", "Internal server error", 500)));
   });
 
+  // Ops / DX stay unversioned; all product API routes live under /v1.
   await app.register(healthRoutes);
-  await app.register(authRoutes, { env });
-  await app.register(usersRoutes, { env });
-  await app.register(adminOverviewRoutes, { env });
-  await app.register(plansRoutes, { env });
-  await app.register(editRequestsRoutes, { env });
-  await app.register(reviewCycleRoutes, { env });
-  await app.register(staffPlanRoutes, { env });
-  await app.register(pmRoutes, { env });
-  await app.register(lineManagerRoutes, { env });
-  await app.register(jobsRoutes, { env });
-  await app.register(navRoutes, { env });
+
+  await app.register(
+    async (v1) => {
+      await v1.register(authRoutes, { env });
+      await v1.register(usersRoutes, { env });
+      await v1.register(adminOverviewRoutes, { env });
+      await v1.register(plansRoutes, { env });
+      await v1.register(editRequestsRoutes, { env });
+      await v1.register(reviewCycleRoutes, { env });
+      await v1.register(staffPlanRoutes, { env });
+      await v1.register(pmRoutes, { env });
+      await v1.register(lineManagerRoutes, { env });
+      await v1.register(jobsRoutes, { env });
+      await v1.register(navRoutes, { env });
+    },
+    { prefix: "/v1" },
+  );
 
   app.get("/openapi.json", async () => app.swagger());
 
