@@ -184,15 +184,9 @@ export class StaffPlanService {
 
     await this.db.$transaction(async (tx) => {
       if (input.removedEntryIds.length > 0) {
-        const removable = await tx.planEntry.findMany({
-          where: {
-            id: { in: input.removedEntryIds },
-            component: { planId: plan.id, type: { in: [...unlockedTypes] } },
-          },
-        });
-        await tx.planEntry.deleteMany({
-          where: { id: { in: removable.map((e) => e.id) } },
-        });
+        throw badRequest(
+          "Removing existing entries is not allowed after the plan is locked. Add or edit entries instead.",
+        );
       }
 
       for (const [index, entry] of input.entries.entries()) {

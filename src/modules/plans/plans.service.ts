@@ -6,6 +6,7 @@ import {
   objectivesCreateData,
   type ObjectiveInput,
 } from "../../domain/objectives.js";
+import { DEFAULT_PROGRAMME_COMPONENTS } from "../../domain/default-components.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
 
@@ -124,12 +125,13 @@ export class PlansService {
     input: {
       ownerId: string;
       year: number;
-      components: ComponentInput[];
+      components?: ComponentInput[];
       entries: EntryInput[];
       lock: boolean;
     },
   ) {
-    const weightCheck = validateWeights(input.components);
+    const components = input.components ?? DEFAULT_PROGRAMME_COMPONENTS;
+    const weightCheck = validateWeights(components);
     if (!weightCheck.ok) {
       throw badRequest(`Active component weights must total 100 (got ${weightCheck.total}).`);
     }
@@ -166,7 +168,7 @@ export class PlansService {
           status,
           createdById: actorId,
           components: {
-            create: input.components.map((component) => ({
+            create: components.map((component) => ({
               type: component.type,
               enabled: component.enabled,
               weight: component.enabled ? component.weight : 0,
@@ -289,6 +291,41 @@ export class PlansService {
     return this.getById(planId);
   }
 
+  async reassignEntryManager(actorId: string, planId: string, entryId: string, managerId: string) {
+    const plan = await this.db.plan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (managerId === plan.ownerId) {
+      throw badRequest("Tagged manager cannot be the plan owner.");
+    }
+    const manager = await this.db.user.findUnique({ where: { id: managerId } });
+    if (!manager || manager.status === "DISABLED") {
+      throw badRequest("Manager not found.");
+    }
+    const entry = await this.db.planEntry.findFirst({
+      where: { id: entryId, component: { planId } },
+    });
+    if (!entry) {
+      throw notFound("Entry not found.");
+    }
+    await this.db.$transaction([
+      this.db.planEntry.update({
+        where: { id: entryId },
+        data: { managerId },
+      }),
+      this.db.changeLog.create({
+        data: {
+          planId,
+          actorId,
+          action: "ENTRY_MANAGER_REASSIGNED",
+          metadata: { entryId, managerId },
+        },
+      }),
+    ]);
+    return this.getById(planId);
+  }
+
   async lock(actorId: string, planId: string) {
     const plan = await this.db.plan.findUnique({ where: { id: planId } });
     if (!plan) {
@@ -302,6 +339,73 @@ export class PlansService {
       }),
     ]);
     return this.getById(planId);
+  }
+
+  async exportYearCsv(year: number): Promise<string> {
+    const plans = await this.db.plan.findMany({
+      where: { year },
+      include: {
+        owner: { select: { fullName: true, email: true, jobTitle: true } },
+        components: {
+          include: {
+            entries: {
+              include: {
+                manager: { select: { fullName: true } },
+                selfAssessment: true,
+                pmReview: true,
+                objectives: { include: { successCriteria: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { owner: { fullName: "asc" } },
+    });
+
+    const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const rows = [
+      [
+        "Staff",
+        "Email",
+        "Job title",
+        "Plan status",
+        "Final score",
+        "Line manager comment",
+        "Recommendation",
+        "Component",
+        "Entry title",
+        "PM",
+        "PM score",
+        "PM comment",
+        "Self-assessment result",
+      ].join(","),
+    ];
+
+    for (const plan of plans) {
+      for (const component of plan.components.filter((c) => c.enabled)) {
+        for (const entry of component.entries) {
+          rows.push(
+            [
+              escape(plan.owner.fullName),
+              escape(plan.owner.email),
+              escape(plan.owner.jobTitle ?? ""),
+              plan.status,
+              plan.finalScore?.toString() ?? "",
+              escape(plan.lineManagerComment ?? ""),
+              escape(plan.recommendation ?? ""),
+              component.type,
+              escape(entry.title),
+              escape(entry.manager.fullName),
+              entry.pmReview?.score?.toString() ?? "",
+              escape(entry.pmReview?.comment ?? ""),
+              entry.selfAssessment?.result ?? "",
+            ].join(","),
+          );
+        }
+      }
+    }
+
+    return rows.join("\n");
   }
 
   async previousYearTemplate(ownerId: string, year: number) {

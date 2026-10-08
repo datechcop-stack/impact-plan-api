@@ -7,4 +7,5 @@ export const lmListQuerySchema = z.object({
 
 export const lmCommentSchema = z.object({
   comment: z.string().min(1).max(5000),
+  recommendation: z.string().max(5000).optional(),
 });

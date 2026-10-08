@@ -181,19 +181,22 @@ export class LineManagerService {
     };
   }
 
-  async saveComment(managerId: string, userId: string, comment: string) {
+  async saveComment(managerId: string, userId: string, comment: string, recommendation?: string) {
     const data = await this.getPersonPlan(managerId, userId);
     if (!isLineManagerFinalizeOpen(data.plan.status)) {
       throw forbidden("Plan is not ready for line-manager comment.");
     }
     await this.db.plan.update({
       where: { id: data.plan.id },
-      data: { lineManagerComment: comment },
+      data: {
+        lineManagerComment: comment,
+        ...(recommendation !== undefined ? { recommendation: recommendation || null } : {}),
+      },
     });
     return this.getPersonPlan(managerId, userId);
   }
 
-  async finalize(managerId: string, userId: string, comment?: string) {
+  async finalize(managerId: string, userId: string, comment?: string, recommendation?: string) {
     const data = await this.getPersonPlan(managerId, userId);
     if (!isLineManagerFinalizeOpen(data.plan.status)) {
       throw forbidden("Plan cannot be finalized in its current state.");
@@ -216,6 +219,7 @@ export class LineManagerService {
         data: {
           status: next,
           lineManagerComment: finalComment,
+          recommendation: recommendation?.trim() || data.plan.recommendation,
           finalizedAt: new Date(),
           finalScore: data.score.finalScore,
         },

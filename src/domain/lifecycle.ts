@@ -74,6 +74,11 @@ export function isPmScoringOpen(status: PlanStatus): boolean {
   return status === "IN_REVIEW";
 }
 
+/** Tagged PMs review goals after the owner locks the plan (before year-end scoring). */
+export function isPmGoalReviewOpen(status: PlanStatus): boolean {
+  return status === "LOCKED";
+}
+
 export function isLineManagerFinalizeOpen(status: PlanStatus): boolean {
   return status === "IN_REVIEW";
 }

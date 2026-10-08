@@ -42,6 +42,7 @@ export const lineManagerRoutes: FastifyPluginAsync<{ env: Env }> = async (app) =
         request.authUser!.id,
         (request.params as { userId: string }).userId,
         body.comment,
+        body.recommendation,
       );
     },
   );
@@ -62,6 +63,7 @@ export const lineManagerRoutes: FastifyPluginAsync<{ env: Env }> = async (app) =
         request.authUser!.id,
         (request.params as { userId: string }).userId,
         body.comment,
+        body.recommendation,
       );
     },
   );

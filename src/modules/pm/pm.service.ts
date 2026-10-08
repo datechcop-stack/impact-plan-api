@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { isPmScoringOpen } from "../../domain/lifecycle.js";
+import { isPmGoalReviewOpen, isPmScoringOpen } from "../../domain/lifecycle.js";
 import { entryObjectivesInclude } from "../../domain/objectives.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 
@@ -65,6 +65,7 @@ export class PmService {
 
     const decorated = entries.map((entry) => {
       const planStatus = entry.component.plan.status;
+      const goalReview = isPmGoalReviewOpen(planStatus as never);
       const submitted =
         Boolean(entry.component.plan.submittedAt) ||
         planStatus === "IN_REVIEW" ||
@@ -72,7 +73,7 @@ export class PmService {
       const reviewed = entry.pmReview?.status === "REVIEWED";
       let bucket: "AWAITING" | "NOT_SUBMITTED" | "REVIEWED" = "NOT_SUBMITTED";
       if (reviewed) bucket = "REVIEWED";
-      else if (submitted) bucket = "AWAITING";
+      else if (submitted || goalReview) bucket = "AWAITING";
       return { entry, bucket, submitted, reviewed };
     });
 
@@ -170,20 +171,25 @@ export class PmService {
     };
   }
 
-  async saveDraft(reviewerId: string, entryId: string, input: { score: number; comment: string }) {
+  async saveDraft(reviewerId: string, entryId: string, input: { score?: number; comment: string }) {
     const entry = await this.requireTaggedEntry(reviewerId, entryId);
-    this.assertScoringAllowed(entry);
+    this.assertReviewAllowed(entry);
+    const goalPhase = isPmGoalReviewOpen(entry.component.plan.status as never);
+    const score = goalPhase ? null : (input.score ?? null);
+    if (!goalPhase && score == null) {
+      throw badRequest("A score is required during year-end PM scoring.");
+    }
     await this.db.pmReview.upsert({
       where: { entryId },
       create: {
         entryId,
         reviewerId,
-        score: input.score,
+        score,
         comment: input.comment,
         status: "DRAFT",
       },
       update: {
-        score: input.score,
+        score,
         comment: input.comment,
         status: "DRAFT",
         reviewerId,
@@ -195,25 +201,30 @@ export class PmService {
   async markReviewed(
     reviewerId: string,
     entryId: string,
-    input: { score: number; comment: string },
+    input: { score?: number; comment: string },
   ) {
     const entry = await this.requireTaggedEntry(reviewerId, entryId);
-    this.assertScoringAllowed(entry);
+    this.assertReviewAllowed(entry);
     if (!input.comment.trim()) {
       throw badRequest("A PM comment is required.");
+    }
+    const goalPhase = isPmGoalReviewOpen(entry.component.plan.status as never);
+    const score = goalPhase ? null : (input.score ?? null);
+    if (!goalPhase && score == null) {
+      throw badRequest("A score is required during year-end PM scoring.");
     }
     await this.db.pmReview.upsert({
       where: { entryId },
       create: {
         entryId,
         reviewerId,
-        score: input.score,
+        score,
         comment: input.comment,
         status: "REVIEWED",
         reviewedAt: new Date(),
       },
       update: {
-        score: input.score,
+        score,
         comment: input.comment,
         status: "REVIEWED",
         reviewedAt: new Date(),
@@ -225,18 +236,20 @@ export class PmService {
         planId: entry.component.planId,
         actorId: reviewerId,
         action: "PM_REVIEWED_ENTRY",
-        metadata: { entryId, score: input.score },
+        metadata: { entryId, score, goalPhase },
       },
     });
     return this.getEntry(reviewerId, entryId);
   }
 
-  private assertScoringAllowed(entry: {
+  private assertReviewAllowed(entry: {
     component: { plan: { status: string; submittedAt: Date | null } };
   }) {
-    if (!isPmScoringOpen(entry.component.plan.status as never)) {
-      throw forbidden("PM scoring opens after the owner submits self-assessment.");
+    const status = entry.component.plan.status as never;
+    if (isPmScoringOpen(status) || isPmGoalReviewOpen(status)) {
+      return;
     }
+    throw forbidden("PM review is not open for this plan yet.");
   }
 
   private async requireTaggedEntry(reviewerId: string, entryId: string) {

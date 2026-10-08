@@ -67,6 +67,22 @@ export function inviteEmailHtml(input: {
   </div>`;
 }
 
+export function reviewWindowOpenedEmailHtml(input: {
+  firstName: string;
+  year: number;
+  windowLabel: string;
+  deadline: string;
+}): string {
+  return `
+  <div style="font-family: Nunito, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+    <h1 style="color:#0B2A4A;">${input.windowLabel}</h1>
+    <p>Hi ${input.firstName},</p>
+    <p>Your administrator has opened the <strong>${input.windowLabel.toLowerCase()}</strong> for Impact Plan ${input.year}.</p>
+    <p>Please sign in and complete the required steps before <strong>${input.deadline}</strong>.</p>
+    <p style="color:#6b7c8f;font-size:12px;">Dev-Afrique Development Advisors</p>
+  </div>`;
+}
+
 export function otpEmailHtml(code: string): string {
   return `
   <div style="font-family: Nunito, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">

@@ -31,8 +31,10 @@ export const createPlanSchema = z.object({
   lock: z.boolean().default(false),
 });
 
-/** Staff self-create: owner is always the authenticated user. */
-export const createMyPlanSchema = createPlanSchema.omit({ ownerId: true });
+/** Staff self-create: owner is always the authenticated user. Components optional (admin defaults). */
+export const createMyPlanSchema = createPlanSchema.omit({ ownerId: true }).extend({
+  components: z.array(componentInput).length(4).optional(),
+});
 
 export const updatePlanDraftSchema = z.object({
   components: z.array(componentInput).length(4).optional(),

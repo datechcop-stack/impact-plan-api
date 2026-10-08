@@ -35,6 +35,7 @@ export class ReviewScheduler {
           cycle.year,
           cycle.audience,
           cycle.participants.map((p) => p.userId),
+          cycle.purpose,
         );
         if (cycle.remindOnOpen) {
           reminders += await this.emailStaffOnOpen(cycle.year);
@@ -70,7 +71,9 @@ export class ReviewScheduler {
     year: number,
     audience: "ALL_WITH_PLAN" | "SELECTED",
     participantIds: string[],
+    purpose: "MIDYEAR_PLAN_UPDATE" | "YEAR_END_REVIEW",
   ): Promise<number> {
+    const midyear = purpose === "MIDYEAR_PLAN_UPDATE";
     const plans = await this.db.plan.findMany({
       where:
         audience === "SELECTED"
@@ -82,13 +85,21 @@ export class ReviewScheduler {
       for (const plan of plans) {
         await tx.plan.update({
           where: { id: plan.id },
-          data: { status: applyTransition(plan.status, "OPEN_REVIEW") },
+          data: { status: applyTransition(plan.status, midyear ? "UNLOCK_WHOLE" : "OPEN_REVIEW") },
         });
+        if (midyear) {
+          await tx.planComponent.updateMany({
+            where: { planId: plan.id, enabled: true },
+            data: { lockState: "UNLOCKED" },
+          });
+        }
         await tx.changeLog.create({
           data: {
             planId: plan.id,
             actorId: plan.createdById,
-            action: "REVIEW_WINDOW_OPENED_BY_SCHEDULER",
+            action: midyear
+              ? "MIDYEAR_REVIEW_OPENED_BY_SCHEDULER"
+              : "REVIEW_WINDOW_OPENED_BY_SCHEDULER",
           },
         });
       }

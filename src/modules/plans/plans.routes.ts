@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { requireAdmin } from "../auth/require-admin.js";
@@ -49,6 +50,23 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
     },
   );
 
+  app.patch(
+    "/admin/plans/:id/entries/:entryId/manager",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const { id, entryId } = request.params as { id: string; entryId: string };
+      const body = z.object({ managerId: z.string().cuid() }).parse(request.body);
+      return service.reassignEntryManager(request.authUser!.id, id, entryId, body.managerId);
+    },
+  );
+
   app.post(
     "/admin/plans/:id/lock",
     {
@@ -61,6 +79,12 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
     },
     async (request) => service.lock(request.authUser!.id, (request.params as { id: string }).id),
   );
+
+  app.get("/admin/plans/export", { preHandler: requireAdmin }, async (request) => {
+    const year = Number((request.query as { year?: string }).year ?? new Date().getFullYear());
+    const csv = await service.exportYearCsv(year);
+    return { filename: `impact-plans-${year}.csv`, csv };
+  });
 
   app.get("/admin/plans/templates/previous-year", { preHandler: requireAdmin }, async (request) => {
     const query = request.query as { ownerId?: string; year?: string };

@@ -86,6 +86,11 @@ enum ReviewCycleStatus {
   CLOSED
 }
 
+enum ReviewWindowPurpose {
+  MIDYEAR_PLAN_UPDATE
+  YEAR_END_REVIEW
+}
+
 model User {
   id             String     @id @default(cuid())
   email          String     @unique
@@ -176,6 +181,7 @@ model Plan {
   status             PlanStatus @default(DRAFT)
   createdById        String
   lineManagerComment String?
+  recommendation     String?
   submittedAt        DateTime?
   finalizedAt        DateTime?
   finalScore         Decimal?   @db.Decimal(5, 2)
@@ -332,6 +338,7 @@ model ReviewCycle {
   pmScoringDeadline      DateTime            @db.Date
   finalizeDeadline       DateTime            @db.Date
   audience               ReviewCycleAudience @default(ALL_WITH_PLAN)
+  purpose                ReviewWindowPurpose @default(YEAR_END_REVIEW)
   remindOnOpen           Boolean             @default(true)
   remindBeforeDeadlines  Boolean             @default(true)
   weeklyLmSummary        Boolean             @default(false)
