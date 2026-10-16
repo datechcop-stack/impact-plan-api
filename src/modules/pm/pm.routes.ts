@@ -2,11 +2,13 @@ import type { FastifyPluginAsync } from "fastify";
 import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
+import { createMailer } from "../emails/mailer.js";
 import { pmListQuerySchema, pmReviewSchema } from "./pm.schemas.js";
 import { PmService } from "./pm.service.js";
 
-export const pmRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
+export const pmRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
   const service = new PmService(prisma);
+  const mailer = createMailer(opts.env);
 
   app.get("/pm/entries", { preHandler: authenticateRequest }, async (request) =>
     service.list(request.authUser!.id, pmListQuerySchema.parse(request.query)),
@@ -48,6 +50,7 @@ export const pmRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
         request.authUser!.id,
         (request.params as { id: string }).id,
         body,
+        mailer,
       );
     },
   );

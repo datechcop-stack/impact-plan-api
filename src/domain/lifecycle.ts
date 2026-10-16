@@ -23,9 +23,12 @@ const transitions: Record<PlanStatus, Partial<Record<PlanTransition, PlanStatus>
   },
   PARTLY_UNLOCKED: {
     RELOCK: "LOCKED",
+    UNLOCK_WHOLE: "UNLOCKED",
+    OPEN_REVIEW: "REVIEW_OPEN",
   },
   UNLOCKED: {
     RELOCK: "LOCKED",
+    OPEN_REVIEW: "REVIEW_OPEN",
   },
   REVIEW_OPEN: {
     SUBMIT_SELF_ASSESSMENT: "IN_REVIEW",
@@ -81,4 +84,11 @@ export function isPmGoalReviewOpen(status: PlanStatus): boolean {
 
 export function isLineManagerFinalizeOpen(status: PlanStatus): boolean {
   return status === "IN_REVIEW";
+}
+
+/** A goal-review acceptance has no score. Year-end scoring is complete only with a score. */
+export function isPmScoreComplete(
+  review: { status: string; score: number | null } | null | undefined,
+): boolean {
+  return Boolean(review && review.status === "REVIEWED" && review.score != null);
 }

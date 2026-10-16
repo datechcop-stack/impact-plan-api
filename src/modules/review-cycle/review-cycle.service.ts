@@ -1,8 +1,15 @@
 import type { PrismaClient } from "@prisma/client";
 import { applyTransition } from "../../domain/lifecycle.js";
+import { statusesEligibleToOpen, type ReviewPurpose } from "../../domain/review-window.js";
 import { badRequest, notFound } from "../../lib/errors.js";
 import type { Mailer } from "../emails/mailer.js";
-import { reviewWindowOpenedEmailHtml, sendMail } from "../emails/mailer.js";
+import {
+  emailDistinct,
+  firstName,
+  reviewStepEmailHtml,
+  reviewWindowOpenedEmailHtml,
+  sendMail,
+} from "../emails/mailer.js";
 
 export class ReviewCycleService {
   constructor(private readonly db: PrismaClient) {}
@@ -89,20 +96,48 @@ export class ReviewCycleService {
       throw notFound("Review cycle not found. Save a schedule first.");
     }
 
-    const planFilter =
+    const purpose = cycle.purpose as ReviewPurpose;
+    const midyear = purpose === "MIDYEAR_PLAN_UPDATE";
+    const ownerFilter =
       cycle.audience === "SELECTED"
-        ? {
-            year,
-            status: "LOCKED" as const,
-            ownerId: { in: cycle.participants.map((p) => p.userId) },
-          }
-        : { year, status: "LOCKED" as const };
+        ? { ownerId: { in: cycle.participants.map((participant) => participant.userId) } }
+        : {};
+    const eligible = statusesEligibleToOpen(purpose);
 
-    const plans = await this.db.plan.findMany({
-      where: planFilter,
-      include: { owner: { select: { id: true, fullName: true, email: true } } },
-    });
-    const midyear = cycle.purpose === "MIDYEAR_PLAN_UPDATE";
+    const [plans, alreadyOpen, skipped] = await Promise.all([
+      this.db.plan.findMany({
+        where: { year, status: { in: eligible }, ...ownerFilter },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              lineManager: { select: { id: true, fullName: true, email: true } },
+            },
+          },
+          components: {
+            where: { enabled: true },
+            include: {
+              entries: {
+                include: { manager: { select: { id: true, fullName: true, email: true } } },
+              },
+            },
+          },
+        },
+      }),
+      this.db.plan.count({
+        where: {
+          year,
+          ...ownerFilter,
+          status: midyear ? "UNLOCKED" : { in: ["REVIEW_OPEN", "IN_REVIEW"] },
+        },
+      }),
+      this.db.plan.count({
+        where: { year, ...ownerFilter, status: { in: ["DRAFT", "FINALIZED"] } },
+      }),
+    ]);
+
     await this.db.$transaction(async (tx) => {
       for (const plan of plans) {
         const next = applyTransition(plan.status, midyear ? "UNLOCK_WHOLE" : "OPEN_REVIEW");
@@ -116,7 +151,7 @@ export class ReviewCycleService {
             planId: plan.id,
             actorId,
             action: midyear ? "MIDYEAR_REVIEW_OPENED" : "REVIEW_WINDOW_OPENED",
-            metadata: { purpose: cycle.purpose },
+            metadata: { purpose },
           },
         });
       }
@@ -126,29 +161,73 @@ export class ReviewCycleService {
       });
     });
 
-    if (mailer && cycle.remindOnOpen) {
+    const notified = { staff: 0, projectManagers: 0, lineManagers: 0 };
+    if (mailer && cycle.remindOnOpen && plans.length > 0) {
+      const deadline = cycle.selfAssessmentDeadline.toISOString().slice(0, 10);
       const windowLabel = midyear
         ? "Mid-year plan update window"
         : "Year-end self-assessment window";
-      for (const plan of plans) {
-        const html = reviewWindowOpenedEmailHtml({
-          firstName: plan.owner.fullName.split(" ")[0] ?? plan.owner.fullName,
-          year,
-          windowLabel,
-          deadline: midyear
-            ? cycle.selfAssessmentDeadline.toISOString().slice(0, 10)
-            : cycle.selfAssessmentDeadline.toISOString().slice(0, 10),
-        });
-        await sendMail(mailer, {
-          to: plan.owner.email,
-          subject: `${windowLabel} · Impact Plan ${year}`,
-          html,
-          text: `${windowLabel} for ${year} is now open. Sign in to Impact Plan to continue.`,
-        });
+      notified.staff = await emailDistinct(
+        mailer,
+        plans.map((plan) => plan.owner),
+        (owner) => {
+          const html = reviewWindowOpenedEmailHtml({
+            firstName: firstName(owner.fullName),
+            year,
+            windowLabel,
+            deadline,
+          });
+          return {
+            subject: `${windowLabel} · Impact Plan ${year}`,
+            html,
+            text: `${windowLabel} for ${year} is now open. Sign in to Impact Plan to continue.`,
+          };
+        },
+      );
+
+      if (!midyear) {
+        const projectManagers = plans.flatMap((plan) =>
+          plan.components.flatMap((component) => component.entries.map((entry) => entry.manager)),
+        );
+        const lineManagers = plans.flatMap((plan) =>
+          plan.owner.lineManager ? [plan.owner.lineManager] : [],
+        );
+        const pmDeadline = cycle.pmScoringDeadline.toISOString().slice(0, 10);
+        const finalizeDeadline = cycle.finalizeDeadline.toISOString().slice(0, 10);
+        notified.projectManagers = await emailDistinct(mailer, projectManagers, (manager) => ({
+          subject: `Year-end scoring · Impact Plan ${year}`,
+          html: reviewStepEmailHtml({
+            firstName: firstName(manager.fullName),
+            heading: "Year-end scoring is open",
+            paragraphs: [
+              `Your administrator opened the ${year} year-end review.`,
+              `Score each entry where you are the tagged manager after that person submits their self-assessment. Scoring is due ${pmDeadline}.`,
+            ],
+          }),
+          text: `Year-end scoring for Impact Plan ${year} opens after each person submits their self-assessment. Due ${pmDeadline}.`,
+        }));
+        notified.lineManagers = await emailDistinct(mailer, lineManagers, (manager) => ({
+          subject: `Year-end final review · Impact Plan ${year}`,
+          html: reviewStepEmailHtml({
+            firstName: firstName(manager.fullName),
+            heading: "Year-end final review is open",
+            paragraphs: [
+              `Your administrator opened the ${year} year-end review for your direct reports.`,
+              `After someone submits their self-assessment and every tagged manager has scored their entries, add your overall comment and finalize the plan. Final review is due ${finalizeDeadline}.`,
+            ],
+          }),
+          text: `Year-end final review for Impact Plan ${year} is open. Finalize each report after self-assessment and project manager scores. Due ${finalizeDeadline}.`,
+        }));
       }
     }
 
-    return { opened: plans.length, purpose: cycle.purpose };
+    return {
+      opened: plans.length,
+      alreadyOpen,
+      skipped,
+      purpose,
+      notified,
+    };
   }
 
   async prepareNewYear(actorId: string, year: number, mailer?: Mailer) {

@@ -57,6 +57,8 @@ export const adminOverviewRoutes: FastifyPluginAsync<{ env: Env }> = async (app)
         staffWithoutPlan: noPlanYet,
         pendingInvites,
         reviewWindowOpens: reviewCycle?.windowOpens?.toISOString().slice(0, 10) ?? null,
+        reviewCycleStatus: reviewCycle?.status ?? null,
+        reviewPurpose: reviewCycle?.purpose ?? null,
       },
       recentActivity: recentActivity.map((item) => ({
         id: item.id,

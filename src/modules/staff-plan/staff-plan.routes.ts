@@ -4,6 +4,7 @@ import type { Env } from "../../env.js";
 import { notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
+import { createMailer } from "../emails/mailer.js";
 import { createMyPlanSchema, updatePlanDraftSchema } from "../plans/plans.schemas.js";
 import { normalizePlanComponentTemplate } from "../../domain/plan-component-template.js";
 import { PlansService } from "../plans/plans.service.js";
@@ -14,9 +15,10 @@ import {
 } from "./staff-plan.schemas.js";
 import { StaffPlanService } from "./staff-plan.service.js";
 
-export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
+export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
   const service = new StaffPlanService(prisma);
   const plansService = new PlansService(prisma);
+  const mailer = createMailer(opts.env);
 
   app.get("/me/plan/create-template", { preHandler: authenticateRequest }, async (request) => {
     const user = await prisma.user.findUnique({
@@ -211,6 +213,6 @@ export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => 
         },
       ],
     },
-    async (request) => service.submit(request.authUser!.id),
+    async (request) => service.submit(request.authUser!.id, new Date().getFullYear(), mailer),
   );
 };

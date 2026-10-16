@@ -1,5 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
-import { applyTransition, isLineManagerFinalizeOpen } from "../../domain/lifecycle.js";
+import {
+  applyTransition,
+  isLineManagerFinalizeOpen,
+  isPmScoreComplete,
+} from "../../domain/lifecycle.js";
 import { computePlanScore, roundDisplay } from "../../domain/scoring.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 
@@ -34,7 +38,14 @@ export class LineManagerService {
     const items = reports.map((person) => {
       const plan = person.ownedPlans[0] ?? null;
       const entries = plan?.components.filter((c) => c.enabled).flatMap((c) => c.entries) ?? [];
-      const pmReviewed = entries.filter((e) => e.pmReview?.status === "REVIEWED").length;
+      const scoringPhase =
+        plan?.status === "REVIEW_OPEN" ||
+        plan?.status === "IN_REVIEW" ||
+        plan?.status === "FINALIZED";
+      const pmReviewed = entries.filter((entry) =>
+        scoringPhase ? isPmScoreComplete(entry.pmReview) : entry.pmReview?.status === "REVIEWED",
+      ).length;
+      const stage = yearEndStage(plan?.status ?? null, pmReviewed, entries.length);
       const score = plan
         ? computePlanScore(
             plan.components.map((c) => ({
@@ -67,6 +78,7 @@ export class LineManagerService {
         planId: plan?.id ?? null,
         planStatus: plan?.status ?? null,
         uiStatus,
+        stage,
         selfAssessment:
           plan?.submittedAt != null
             ? `Submitted ${plan.submittedAt.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
@@ -74,12 +86,7 @@ export class LineManagerService {
         pmReviews: {
           done: pmReviewed,
           total: entries.length,
-          ready: Boolean(
-            plan &&
-            plan.status === "IN_REVIEW" &&
-            pmReviewed === entries.length &&
-            entries.length > 0,
-          ),
+          ready: stage === "READY_TO_FINALIZE",
         },
         weightedScore:
           score?.isComplete && score.finalScore != null ? roundDisplay(score.finalScore) : null,
@@ -99,8 +106,20 @@ export class LineManagerService {
       finalized: items.filter((i) => i.uiStatus === "FINALIZED").length,
     };
 
+    const reviewCycle = await this.db.reviewCycle.findUnique({
+      where: { year },
+      select: {
+        status: true,
+        purpose: true,
+        selfAssessmentDeadline: true,
+        pmScoringDeadline: true,
+        finalizeDeadline: true,
+      },
+    });
+
     return {
       counts,
+      reviewCycle,
       yearEndProgress: {
         finalized: counts.finalized,
         total: counts.all,
@@ -166,7 +185,7 @@ export class LineManagerService {
     );
 
     const entries = plan.components.filter((c) => c.enabled).flatMap((c) => c.entries);
-    const pmDone = entries.filter((e) => e.pmReview?.status === "REVIEWED").length;
+    const pmDone = entries.filter((entry) => isPmScoreComplete(entry.pmReview)).length;
 
     return {
       plan,
@@ -253,4 +272,26 @@ export class LineManagerService {
     });
     return { ok: true };
   }
+}
+
+function yearEndStage(
+  status: string | null,
+  scored: number,
+  total: number,
+):
+  | "NONE"
+  | "DRAFT"
+  | "GOAL_REVIEW"
+  | "SELF_ASSESSMENT"
+  | "PM_SCORING"
+  | "READY_TO_FINALIZE"
+  | "FINALIZED" {
+  if (!status) return "NONE";
+  if (status === "DRAFT") return "DRAFT";
+  if (status === "FINALIZED") return "FINALIZED";
+  if (status === "REVIEW_OPEN") return "SELF_ASSESSMENT";
+  if (status === "IN_REVIEW") {
+    return total > 0 && scored === total ? "READY_TO_FINALIZE" : "PM_SCORING";
+  }
+  return "GOAL_REVIEW";
 }

@@ -44,6 +44,55 @@ export async function sendMail(mailer: Mailer, input: SendMailInput): Promise<vo
   await mailer.send(input);
 }
 
+export async function sendMailSafely(mailer: Mailer, input: SendMailInput): Promise<boolean> {
+  try {
+    await mailer.send(input);
+    return true;
+  } catch (error) {
+    console.error(`[mail] ${input.to}:`, error);
+    return false;
+  }
+}
+
+function firstName(fullName: string): string {
+  return fullName.split(" ")[0] || fullName;
+}
+
+export function reviewStepEmailHtml(input: {
+  firstName: string;
+  heading: string;
+  paragraphs: string[];
+}): string {
+  const body = input.paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("");
+  return `
+  <div style="font-family: Nunito, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+    <h1 style="color:#0B2A4A;">${input.heading}</h1>
+    <p>Hi ${input.firstName},</p>
+    ${body}
+    <p style="color:#6b7c8f;font-size:12px;">Dev-Afrique Development Advisors</p>
+  </div>`;
+}
+
+export async function emailDistinct(
+  mailer: Mailer,
+  people: Array<{ fullName: string; email: string }>,
+  build: (person: { fullName: string; email: string }) => Omit<SendMailInput, "to">,
+): Promise<number> {
+  const seen = new Set<string>();
+  let sent = 0;
+  for (const person of people) {
+    const key = person.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const message = build(person);
+    const ok = await sendMailSafely(mailer, { to: person.email, ...message });
+    if (ok) sent += 1;
+  }
+  return sent;
+}
+
+export { firstName };
+
 export function inviteEmailHtml(input: {
   firstName: string;
   adminName: string;

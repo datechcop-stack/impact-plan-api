@@ -5,7 +5,9 @@ import {
   IllegalPlanTransitionError,
   isImmutable,
   isOwnerEditable,
+  isPmScoreComplete,
 } from "../../src/domain/lifecycle.js";
+import { statusesEligibleToOpen } from "../../src/domain/review-window.js";
 
 describe("plan lifecycle", () => {
   it("allows DRAFT -> LOCKED -> REVIEW_OPEN -> IN_REVIEW -> FINALIZED", () => {
@@ -31,5 +33,23 @@ describe("plan lifecycle", () => {
   it("rejects illegal transitions", () => {
     expect(() => applyTransition("FINALIZED", "LOCK")).toThrow(IllegalPlanTransitionError);
     expect(canTransition("DRAFT", "FINALIZE")).toBe(false);
+  });
+
+  it("opens year-end review from locked and unlocked plans", () => {
+    expect(applyTransition("UNLOCKED", "OPEN_REVIEW")).toBe("REVIEW_OPEN");
+    expect(applyTransition("PARTLY_UNLOCKED", "OPEN_REVIEW")).toBe("REVIEW_OPEN");
+    expect(applyTransition("PARTLY_UNLOCKED", "UNLOCK_WHOLE")).toBe("UNLOCKED");
+    expect(statusesEligibleToOpen("YEAR_END_REVIEW")).toEqual([
+      "LOCKED",
+      "PARTLY_UNLOCKED",
+      "UNLOCKED",
+    ]);
+  });
+
+  it("treats a goal review without a score as unfinished year-end scoring", () => {
+    expect(isPmScoreComplete(null)).toBe(false);
+    expect(isPmScoreComplete({ status: "REVIEWED", score: null })).toBe(false);
+    expect(isPmScoreComplete({ status: "DRAFT", score: 80 })).toBe(false);
+    expect(isPmScoreComplete({ status: "REVIEWED", score: 80 })).toBe(true);
   });
 });

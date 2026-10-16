@@ -14,6 +14,7 @@ import {
 } from "../../domain/plan-component-template.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
+import { enrollPlanInOpenYearEndWindow } from "../review-cycle/enroll-plan.js";
 
 type ComponentInput = {
   type: ComponentType;
@@ -265,6 +266,10 @@ export class PlansService {
       return created;
     });
 
+    if (input.lock) {
+      await enrollPlanInOpenYearEndWindow(this.db, plan.id, actorId);
+    }
+
     return this.getById(plan.id);
   }
 
@@ -428,6 +433,7 @@ export class PlansService {
         data: { planId, actorId, action: "PLAN_LOCKED" },
       }),
     ]);
+    await enrollPlanInOpenYearEndWindow(this.db, planId, actorId);
     return this.getById(planId);
   }
 

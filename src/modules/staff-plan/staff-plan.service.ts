@@ -1,5 +1,7 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
 import { applyTransition, isOwnerEditable, isSelfAssessmentOpen } from "../../domain/lifecycle.js";
+import type { Mailer } from "../emails/mailer.js";
+import { emailDistinct, firstName, reviewStepEmailHtml } from "../emails/mailer.js";
 import {
   assertObjectivesValid,
   entryObjectivesInclude,
@@ -272,12 +274,20 @@ export class StaffPlanService {
     return this.requireMyPlan(userId, entry.component.plan.year);
   }
 
-  async submit(userId: string, year = new Date().getFullYear()) {
+  async submit(userId: string, year = new Date().getFullYear(), mailer?: Mailer) {
     const plan = await this.db.plan.findUnique({
       where: { ownerId_year: { ownerId: userId, year } },
       include: {
+        owner: { select: { fullName: true } },
         components: {
-          include: { entries: { include: { selfAssessment: true } } },
+          include: {
+            entries: {
+              include: {
+                selfAssessment: true,
+                manager: { select: { id: true, fullName: true, email: true } },
+              },
+            },
+          },
         },
       },
     });
@@ -311,6 +321,24 @@ export class StaffPlanService {
         },
       }),
     ]);
+
+    if (mailer) {
+      const managers = entries.map((entry) => entry.manager);
+      const cycle = await this.db.reviewCycle.findUnique({ where: { year } });
+      const deadline = cycle?.pmScoringDeadline.toISOString().slice(0, 10);
+      await emailDistinct(mailer, managers, (manager) => ({
+        subject: `${plan.owner.fullName} submitted their self-assessment · Impact Plan ${year}`,
+        html: reviewStepEmailHtml({
+          firstName: firstName(manager.fullName),
+          heading: "Score a submitted self-assessment",
+          paragraphs: [
+            `${plan.owner.fullName} submitted their Impact Plan ${year} self-assessment.`,
+            `Score each entry where you are the tagged manager${deadline ? ` before ${deadline}` : ""}.`,
+          ],
+        }),
+        text: `${plan.owner.fullName} submitted their Impact Plan ${year} self-assessment. Score your tagged entries.`,
+      }));
+    }
 
     return this.requireMyPlan(userId, year);
   }

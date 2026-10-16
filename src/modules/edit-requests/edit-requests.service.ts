@@ -1,6 +1,7 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
 import { applyTransition } from "../../domain/lifecycle.js";
 import { badRequest, notFound } from "../../lib/errors.js";
+import { enrollPlanInOpenYearEndWindow } from "../review-cycle/enroll-plan.js";
 
 export class EditRequestsService {
   constructor(private readonly db: PrismaClient) {}
@@ -152,6 +153,7 @@ export class EditRequestsService {
         data: { planId, actorId, action: "PLAN_RELOCKED" },
       }),
     ]);
+    await enrollPlanInOpenYearEndWindow(this.db, planId, actorId);
     return { ok: true };
   }
 
