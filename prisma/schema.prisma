@@ -100,10 +100,11 @@ model User {
   authMethod     AuthMethod @default(UNSET)
   passwordHash   String?
   lineManagerId  String?
-  status         UserStatus @default(INVITED)
-  activatedAt    DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  status                 UserStatus @default(INVITED)
+  planComponentTemplate  Json?
+  activatedAt            DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
   lineManager    User?      @relation("LineReports", fields: [lineManagerId], references: [id])
   reports        User[]     @relation("LineReports")

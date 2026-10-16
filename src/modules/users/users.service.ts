@@ -1,7 +1,9 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { Env } from "../../env.js";
 import { hashToken } from "../../domain/otp.js";
 import { generateOpaqueToken } from "../../lib/crypto.js";
+import { planComponentTemplateSchema } from "../../domain/plan-component-template.js";
+import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
 import { type Mailer, inviteEmailHtml, sendMail } from "../emails/mailer.js";
 
@@ -53,6 +55,11 @@ export class UsersService {
       lineManagerId?: string | null;
       role: "STAFF" | "ADMIN";
       remindCreatePlan: boolean;
+      planComponents?: Array<{
+        type: "PROJECTS" | "BD" | "TECH_PERSONAL" | "COP";
+        enabled: boolean;
+        weight: number;
+      }>;
     },
   ) {
     const email = input.email.toLowerCase();
@@ -67,6 +74,16 @@ export class UsersService {
       }
     }
 
+    let planComponentTemplate: Prisma.InputJsonValue | undefined = undefined;
+    if (input.planComponents) {
+      const parsed = planComponentTemplateSchema.parse(input.planComponents);
+      const weightCheck = validateWeights(parsed);
+      if (!weightCheck.ok) {
+        throw badRequest(`Active component weights must total 100 (got ${weightCheck.total}).`);
+      }
+      planComponentTemplate = parsed;
+    }
+
     const token = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + this.env.INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
@@ -78,6 +95,7 @@ export class UsersService {
         role: input.role,
         lineManagerId: input.lineManagerId ?? null,
         status: "INVITED",
+        planComponentTemplate,
         invitation: {
           create: {
             tokenHash: hashToken(token),

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { componentInput } from "../plans/plans.schemas.js";
 
 export const inviteUserSchema = z.object({
   fullName: z.string().min(2),
@@ -7,6 +8,7 @@ export const inviteUserSchema = z.object({
   lineManagerId: z.string().cuid().nullable().optional(),
   role: z.enum(["STAFF", "ADMIN"]).default("STAFF"),
   remindCreatePlan: z.boolean().default(true),
+  planComponents: z.array(componentInput).length(4).optional(),
 });
 
 export const updateUserSchema = z.object({

@@ -66,15 +66,18 @@ export class PmService {
     const decorated = entries.map((entry) => {
       const planStatus = entry.component.plan.status;
       const goalReview = isPmGoalReviewOpen(planStatus as never);
-      const submitted =
-        Boolean(entry.component.plan.submittedAt) ||
-        planStatus === "IN_REVIEW" ||
-        planStatus === "FINALIZED";
+      const scoringReview = isPmScoringOpen(planStatus as never) || planStatus === "FINALIZED";
+      const selfAssessmentSubmitted = Boolean(entry.component.plan.submittedAt);
       const reviewed = entry.pmReview?.status === "REVIEWED";
       let bucket: "AWAITING" | "NOT_SUBMITTED" | "REVIEWED" = "NOT_SUBMITTED";
       if (reviewed) bucket = "REVIEWED";
-      else if (submitted || goalReview) bucket = "AWAITING";
-      return { entry, bucket, submitted, reviewed };
+      else if (goalReview || (scoringReview && selfAssessmentSubmitted)) bucket = "AWAITING";
+      const reviewPhase: "GOAL" | "SCORING" | null = goalReview
+        ? "GOAL"
+        : scoringReview && selfAssessmentSubmitted
+          ? "SCORING"
+          : null;
+      return { entry, bucket, reviewPhase, reviewed };
     });
 
     const filtered =
@@ -115,12 +118,14 @@ export class PmService {
         awaiting: group.items.filter((i) => i.bucket === "AWAITING").length,
         reviewed: group.items.filter((i) => i.bucket === "REVIEWED").length,
         notSubmitted: group.items.every((i) => i.bucket === "NOT_SUBMITTED"),
+        planStatus: group.items[0]?.entry.component.plan.status ?? "DRAFT",
         entries: group.items.map((i) => ({
           id: i.entry.id,
           title: i.entry.title,
           componentType: i.entry.component.type,
           weight: i.entry.component.weight,
           status: i.bucket,
+          reviewPhase: i.reviewPhase,
           score: i.entry.pmReview?.score ?? null,
           dueDate: i.entry.dueDate.toISOString().slice(0, 10),
         })),
@@ -144,12 +149,18 @@ export class PmService {
       },
       orderBy: { sortOrder: "asc" },
     });
-    const awaiting = ownerEntries.filter(
-      (item) =>
-        (item.component.plan.status === "IN_REVIEW" ||
-          item.component.plan.status === "FINALIZED") &&
-        item.pmReview?.status !== "REVIEWED",
-    );
+    const awaiting = ownerEntries.filter((item) => {
+      const status = item.component.plan.status as never;
+      if (item.pmReview?.status === "REVIEWED") return false;
+      if (isPmGoalReviewOpen(status)) return true;
+      if (
+        (isPmScoringOpen(status) || status === "FINALIZED") &&
+        Boolean(item.component.plan.submittedAt)
+      ) {
+        return true;
+      }
+      return false;
+    });
     return {
       entry: {
         id: entry.id,

@@ -5,7 +5,7 @@ import { notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
 import { createMyPlanSchema, updatePlanDraftSchema } from "../plans/plans.schemas.js";
-import { DEFAULT_PROGRAMME_COMPONENTS } from "../../domain/default-components.js";
+import { normalizePlanComponentTemplate } from "../../domain/plan-component-template.js";
 import { PlansService } from "../plans/plans.service.js";
 import {
   editRequestCreateSchema,
@@ -18,9 +18,15 @@ export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => 
   const service = new StaffPlanService(prisma);
   const plansService = new PlansService(prisma);
 
-  app.get("/me/plan/create-template", { preHandler: authenticateRequest }, async () => ({
-    components: DEFAULT_PROGRAMME_COMPONENTS,
-  }));
+  app.get("/me/plan/create-template", { preHandler: authenticateRequest }, async (request) => {
+    const user = await prisma.user.findUnique({
+      where: { id: request.authUser!.id },
+      select: { planComponentTemplate: true },
+    });
+    return {
+      components: normalizePlanComponentTemplate(user?.planComponentTemplate),
+    };
+  });
 
   app.get("/me/plans/years", { preHandler: authenticateRequest }, async (request) => {
     const userId = request.authUser!.id;
@@ -86,7 +92,8 @@ export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => 
       if (!owned) {
         throw notFound("Plan not found.");
       }
-      return plansService.updateDraft(userId, owned.id, body);
+      const { components: _ignored, ...staffDraft } = body;
+      return plansService.updateDraft(userId, owned.id, staffDraft);
     },
   );
 

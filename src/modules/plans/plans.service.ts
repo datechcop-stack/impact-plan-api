@@ -6,7 +6,12 @@ import {
   objectivesCreateData,
   type ObjectiveInput,
 } from "../../domain/objectives.js";
-import { DEFAULT_PROGRAMME_COMPONENTS } from "../../domain/default-components.js";
+import {
+  assertObjectivesValidForDraft,
+  componentsForOwner,
+  entriesForDraftSave,
+  type DraftEntryInput,
+} from "../../domain/plan-component-template.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
 
@@ -23,6 +28,43 @@ type EntryInput = {
   managerId: string;
   dueDate: string;
 };
+
+function validateEntriesForLock(entries: EntryInput[]) {
+  if (entries.length === 0) {
+    throw badRequest("Add at least one plan entry before locking.");
+  }
+  for (const entry of entries) {
+    const objectivesError = assertObjectivesValid(entry.objectives);
+    if (objectivesError) {
+      throw badRequest(objectivesError);
+    }
+    if (
+      entry.objectives.some(
+        (objective) =>
+          objective.text.trim() === "Draft objective" ||
+          objective.successCriteria.some((c) => c.text.trim() === "To be completed"),
+      )
+    ) {
+      throw badRequest("Complete every objective and success criterion before locking.");
+    }
+  }
+}
+
+function validateEntriesForDraft(entries: EntryInput[], strictObjectives: boolean) {
+  for (const entry of entries) {
+    if (strictObjectives) {
+      const objectivesError = assertObjectivesValid(entry.objectives);
+      if (objectivesError) {
+        throw badRequest(objectivesError);
+      }
+      continue;
+    }
+    const objectivesError = assertObjectivesValidForDraft(entry.objectives);
+    if (objectivesError) {
+      throw badRequest(objectivesError);
+    }
+  }
+}
 
 export class PlansService {
   constructor(private readonly db: PrismaClient) {}
@@ -126,20 +168,26 @@ export class PlansService {
       ownerId: string;
       year: number;
       components?: ComponentInput[];
-      entries: EntryInput[];
+      entries: DraftEntryInput[] | EntryInput[];
       lock: boolean;
     },
   ) {
-    const components = input.components ?? DEFAULT_PROGRAMME_COMPONENTS;
+    const owner = await this.db.user.findUnique({ where: { id: input.ownerId } });
+    if (!owner) {
+      throw notFound("Owner not found.");
+    }
+
+    const components = componentsForOwner(owner.planComponentTemplate, input.components);
     const weightCheck = validateWeights(components);
     if (!weightCheck.ok) {
       throw badRequest(`Active component weights must total 100 (got ${weightCheck.total}).`);
     }
 
-    const owner = await this.db.user.findUnique({ where: { id: input.ownerId } });
-    if (!owner) {
-      throw notFound("Owner not found.");
-    }
+    const normalizedEntries = entriesForDraftSave(
+      input.entries as DraftEntryInput[],
+      input.year,
+      input.ownerId,
+    );
 
     const existing = await this.db.plan.findUnique({
       where: { ownerId_year: { ownerId: input.ownerId, year: input.year } },
@@ -148,14 +196,15 @@ export class PlansService {
       throw conflict("A plan already exists for this user and year.");
     }
 
-    for (const entry of input.entries) {
+    for (const entry of normalizedEntries) {
       if (entry.managerId === input.ownerId) {
         throw badRequest("Tagged manager cannot be the plan owner.");
       }
-      const objectivesError = assertObjectivesValid(entry.objectives);
-      if (objectivesError) {
-        throw badRequest(objectivesError);
-      }
+    }
+    if (input.lock) {
+      validateEntriesForLock(normalizedEntries);
+    } else {
+      validateEntriesForDraft(normalizedEntries, false);
     }
 
     const status = input.lock ? applyTransition("DRAFT", "LOCK") : "DRAFT";
@@ -180,11 +229,18 @@ export class PlansService {
       });
 
       const componentByType = new Map(created.components.map((c) => [c.type, c]));
-      for (const [index, entry] of input.entries.entries()) {
+      for (const [index, entry] of normalizedEntries.entries()) {
         const component = componentByType.get(entry.type);
         if (!component || !component.enabled) {
           throw badRequest(`Component ${entry.type} is not enabled.`);
         }
+        const objectives = input.lock
+          ? entry.objectives
+          : entry.objectives.length > 0 &&
+              assertObjectivesValidForDraft(entry.objectives) === null &&
+              entry.objectives.some((o) => o.text.trim())
+            ? entry.objectives.filter((o) => o.text.trim())
+            : [{ text: "Draft objective", successCriteria: [{ text: "To be completed" }] }];
         await tx.planEntry.create({
           data: {
             componentId: component.id,
@@ -192,7 +248,7 @@ export class PlansService {
             managerId: entry.managerId,
             dueDate: new Date(entry.dueDate),
             sortOrder: index,
-            objectives: objectivesCreateData(entry.objectives),
+            objectives: objectivesCreateData(objectives),
           },
         });
       }
@@ -215,7 +271,7 @@ export class PlansService {
   async updateDraft(
     actorId: string,
     planId: string,
-    input: { components?: ComponentInput[]; entries?: EntryInput[] },
+    input: { components?: ComponentInput[]; entries?: DraftEntryInput[] },
   ) {
     const plan = await this.db.plan.findUnique({
       where: { id: planId },
@@ -249,23 +305,27 @@ export class PlansService {
       }
 
       if (input.entries) {
+        const normalizedEntries = entriesForDraftSave(input.entries, plan.year, plan.ownerId);
+        validateEntriesForDraft(normalizedEntries, false);
         const components = await tx.planComponent.findMany({ where: { planId } });
         await tx.planEntry.deleteMany({
           where: { componentId: { in: components.map((c) => c.id) } },
         });
         const byType = new Map(components.map((c) => [c.type, c]));
-        for (const [index, entry] of input.entries.entries()) {
+        for (const [index, entry] of normalizedEntries.entries()) {
           if (entry.managerId === plan.ownerId) {
             throw badRequest("Tagged manager cannot be the plan owner.");
-          }
-          const objectivesError = assertObjectivesValid(entry.objectives);
-          if (objectivesError) {
-            throw badRequest(objectivesError);
           }
           const component = byType.get(entry.type);
           if (!component?.enabled) {
             throw badRequest(`Component ${entry.type} is not enabled.`);
           }
+          const objectives =
+            entry.objectives.length > 0 &&
+            assertObjectivesValidForDraft(entry.objectives) === null &&
+            entry.objectives.some((o) => o.text.trim())
+              ? entry.objectives.filter((o) => o.text.trim())
+              : [{ text: "Draft objective", successCriteria: [{ text: "To be completed" }] }];
           await tx.planEntry.create({
             data: {
               componentId: component.id,
@@ -273,7 +333,7 @@ export class PlansService {
               managerId: entry.managerId,
               dueDate: new Date(entry.dueDate),
               sortOrder: index,
-              objectives: objectivesCreateData(entry.objectives),
+              objectives: objectivesCreateData(objectives as ObjectiveInput[]),
             },
           });
         }
@@ -327,10 +387,40 @@ export class PlansService {
   }
 
   async lock(actorId: string, planId: string) {
-    const plan = await this.db.plan.findUnique({ where: { id: planId } });
+    const plan = await this.db.plan.findUnique({
+      where: { id: planId },
+      include: {
+        components: {
+          include: {
+            entries: {
+              include: {
+                objectives: { include: { successCriteria: true } },
+              },
+            },
+          },
+        },
+      },
+    });
     if (!plan) {
       throw notFound("Plan not found.");
     }
+    const lockEntries = plan.components
+      .filter((c) => c.enabled)
+      .flatMap((c) =>
+        c.entries.map((entry) => ({
+          type: c.type,
+          title: entry.title,
+          managerId: entry.managerId,
+          dueDate: entry.dueDate.toISOString().slice(0, 10),
+          objectives: entry.objectives.map((objective) => ({
+            text: objective.text,
+            successCriteria: objective.successCriteria.map((criterion) => ({
+              text: criterion.text,
+            })),
+          })),
+        })),
+      );
+    validateEntriesForLock(lockEntries);
     const next = applyTransition(plan.status, "LOCK");
     await this.db.$transaction([
       this.db.plan.update({ where: { id: planId }, data: { status: next } }),
