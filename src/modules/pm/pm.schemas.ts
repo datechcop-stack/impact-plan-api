@@ -9,5 +9,6 @@ export const pmListQuerySchema = z.object({
 
 export const pmReviewSchema = z.object({
   score: z.number().int().min(0).max(100).optional(),
-  comment: z.string().min(1).max(5000),
+  comment: z.string().max(5000).default(""),
+  decision: z.enum(["ACCEPT", "REJECT"]).optional(),
 });

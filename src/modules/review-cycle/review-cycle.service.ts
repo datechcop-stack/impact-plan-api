@@ -107,12 +107,10 @@ export class ReviewCycleService {
       for (const plan of plans) {
         const next = applyTransition(plan.status, midyear ? "UNLOCK_WHOLE" : "OPEN_REVIEW");
         await tx.plan.update({ where: { id: plan.id }, data: { status: next } });
-        if (midyear) {
-          await tx.planComponent.updateMany({
-            where: { planId: plan.id, enabled: true },
-            data: { lockState: "UNLOCKED" },
-          });
-        }
+        await tx.planComponent.updateMany({
+          where: { planId: plan.id, enabled: true },
+          data: { lockState: "UNLOCKED" },
+        });
         await tx.changeLog.create({
           data: {
             planId: plan.id,

@@ -163,7 +163,7 @@ export class StaffPlanService {
     const unlockedTypes = new Set(
       plan.components.filter((c) => c.lockState === "UNLOCKED" && c.enabled).map((c) => c.type),
     );
-    if (plan.status === "UNLOCKED") {
+    if (plan.status === "UNLOCKED" || plan.status === "REVIEW_OPEN") {
       plan.components.filter((c) => c.enabled).forEach((c) => unlockedTypes.add(c.type));
     }
 

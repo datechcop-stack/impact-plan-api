@@ -87,12 +87,10 @@ export class ReviewScheduler {
           where: { id: plan.id },
           data: { status: applyTransition(plan.status, midyear ? "UNLOCK_WHOLE" : "OPEN_REVIEW") },
         });
-        if (midyear) {
-          await tx.planComponent.updateMany({
-            where: { planId: plan.id, enabled: true },
-            data: { lockState: "UNLOCKED" },
-          });
-        }
+        await tx.planComponent.updateMany({
+          where: { planId: plan.id, enabled: true },
+          data: { lockState: "UNLOCKED" },
+        });
         await tx.changeLog.create({
           data: {
             planId: plan.id,

@@ -63,7 +63,7 @@ export function isImmutable(status: PlanStatus): boolean {
 }
 
 export function isOwnerEditable(status: PlanStatus): boolean {
-  return status === "PARTLY_UNLOCKED" || status === "UNLOCKED";
+  return status === "PARTLY_UNLOCKED" || status === "UNLOCKED" || status === "REVIEW_OPEN";
 }
 
 export function isSelfAssessmentOpen(status: PlanStatus): boolean {

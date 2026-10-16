@@ -212,14 +212,20 @@ export class PmService {
   async markReviewed(
     reviewerId: string,
     entryId: string,
-    input: { score?: number; comment: string },
+    input: { score?: number; comment: string; decision?: "ACCEPT" | "REJECT" },
   ) {
     const entry = await this.requireTaggedEntry(reviewerId, entryId);
     this.assertReviewAllowed(entry);
-    if (!input.comment.trim()) {
+    const goalPhase = isPmGoalReviewOpen(entry.component.plan.status as never);
+    const comment = input.comment.trim();
+    if (goalPhase) {
+      const decision = input.decision ?? "ACCEPT";
+      if (decision === "REJECT" && !comment) {
+        throw badRequest("Add a comment explaining what needs to change before rejecting.");
+      }
+    } else if (!comment) {
       throw badRequest("A PM comment is required.");
     }
-    const goalPhase = isPmGoalReviewOpen(entry.component.plan.status as never);
     const score = goalPhase ? null : (input.score ?? null);
     if (!goalPhase && score == null) {
       throw badRequest("A score is required during year-end PM scoring.");
@@ -230,13 +236,13 @@ export class PmService {
         entryId,
         reviewerId,
         score,
-        comment: input.comment,
+        comment,
         status: "REVIEWED",
         reviewedAt: new Date(),
       },
       update: {
         score,
-        comment: input.comment,
+        comment,
         status: "REVIEWED",
         reviewedAt: new Date(),
         reviewerId,
@@ -246,8 +252,12 @@ export class PmService {
       data: {
         planId: entry.component.planId,
         actorId: reviewerId,
-        action: "PM_REVIEWED_ENTRY",
-        metadata: { entryId, score, goalPhase },
+        action: goalPhase
+          ? input.decision === "REJECT"
+            ? "PM_GOALS_REJECTED"
+            : "PM_GOALS_ACCEPTED"
+          : "PM_REVIEWED_ENTRY",
+        metadata: { entryId, score, goalPhase, decision: input.decision ?? null },
       },
     });
     return this.getEntry(reviewerId, entryId);
