@@ -343,6 +343,40 @@ export class StaffPlanService {
     return this.requireMyPlan(userId, year);
   }
 
+  async submitEmployeeFeedback(userId: string, feedback: string, year = new Date().getFullYear()) {
+    const plan = await this.db.plan.findUnique({
+      where: { ownerId_year: { ownerId: userId, year } },
+    });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (plan.status !== "FINALIZED") {
+      throw forbidden("Employee feedback opens after your line manager finalizes the plan.");
+    }
+    if (plan.employeeFeedbackAt) {
+      throw badRequest("Employee feedback is already submitted. This plan is concluded.");
+    }
+
+    await this.db.$transaction([
+      this.db.plan.update({
+        where: { id: plan.id },
+        data: {
+          employeeFeedback: feedback.trim(),
+          employeeFeedbackAt: new Date(),
+        },
+      }),
+      this.db.changeLog.create({
+        data: {
+          planId: plan.id,
+          actorId: userId,
+          action: "EMPLOYEE_FEEDBACK_SUBMITTED",
+        },
+      }),
+    ]);
+
+    return this.requireMyPlan(userId, year);
+  }
+
   private async requireMyPlan(userId: string, year: number) {
     const result = await this.getMyPlan(userId, year);
     if (!result.plan) {

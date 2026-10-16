@@ -46,6 +46,11 @@ describe("plan lifecycle", () => {
     ]);
   });
 
+  it("reopens a finalized plan for rescoring", () => {
+    expect(applyTransition("FINALIZED", "REOPEN")).toBe("IN_REVIEW");
+    expect(canTransition("IN_REVIEW", "REOPEN")).toBe(false);
+  });
+
   it("treats a goal review without a score as unfinished year-end scoring", () => {
     expect(isPmScoreComplete(null)).toBe(false);
     expect(isPmScoreComplete({ status: "REVIEWED", score: null })).toBe(false);

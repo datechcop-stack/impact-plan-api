@@ -14,6 +14,8 @@ import {
 } from "../../domain/plan-component-template.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
+import type { Mailer } from "../emails/mailer.js";
+import { emailDistinct, firstName, reviewStepEmailHtml } from "../emails/mailer.js";
 import { enrollPlanInOpenYearEndWindow } from "../review-cycle/enroll-plan.js";
 
 type ComponentInput = {
@@ -434,6 +436,90 @@ export class PlansService {
       }),
     ]);
     await enrollPlanInOpenYearEndWindow(this.db, planId, actorId);
+    return this.getById(planId);
+  }
+
+  async reopen(actorId: string, planId: string, mailer?: Mailer) {
+    const plan = await this.db.plan.findUnique({
+      where: { id: planId },
+      include: {
+        owner: {
+          select: {
+            fullName: true,
+            email: true,
+            lineManager: { select: { fullName: true, email: true } },
+          },
+        },
+        components: {
+          where: { enabled: true },
+          include: {
+            entries: {
+              include: { manager: { select: { fullName: true, email: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (plan.status !== "FINALIZED") {
+      throw badRequest("Only a finalized plan can be reopened for review.");
+    }
+
+    const next = applyTransition(plan.status, "REOPEN");
+    await this.db.$transaction([
+      this.db.plan.update({
+        where: { id: plan.id },
+        data: {
+          status: next,
+          revisionOpen: true,
+          employeeFeedbackAt: null,
+        },
+      }),
+      this.db.changeLog.create({
+        data: {
+          planId: plan.id,
+          actorId,
+          action: "PLAN_REOPENED",
+          metadata: { year: plan.year },
+        },
+      }),
+    ]);
+
+    if (mailer) {
+      const managers = plan.components.flatMap((component) =>
+        component.entries.map((entry) => entry.manager),
+      );
+      await emailDistinct(mailer, managers, (manager) => ({
+        subject: `Update scores · ${plan.owner.fullName} · Impact Plan ${plan.year}`,
+        html: reviewStepEmailHtml({
+          firstName: firstName(manager.fullName),
+          heading: "A finalized plan was reopened",
+          paragraphs: [
+            `An administrator reopened ${plan.owner.fullName}'s Impact Plan ${plan.year} for review.`,
+            "You can update your scores and comments on the entries where you are the tagged manager.",
+          ],
+        }),
+        text: `${plan.owner.fullName}'s Impact Plan ${plan.year} was reopened. Update your scores and comments.`,
+      }));
+      if (plan.owner.lineManager) {
+        const lineManager = plan.owner.lineManager;
+        await emailDistinct(mailer, [lineManager], () => ({
+          subject: `Update final review · ${plan.owner.fullName} · Impact Plan ${plan.year}`,
+          html: reviewStepEmailHtml({
+            firstName: firstName(lineManager.fullName),
+            heading: "A finalized plan was reopened",
+            paragraphs: [
+              `An administrator reopened ${plan.owner.fullName}'s Impact Plan ${plan.year} for review.`,
+              "You can update the overall comment and recommendation, then finalize again.",
+            ],
+          }),
+          text: `${plan.owner.fullName}'s Impact Plan ${plan.year} was reopened. Update your comment and recommendation, then finalize again.`,
+        }));
+      }
+    }
+
     return this.getById(planId);
   }
 

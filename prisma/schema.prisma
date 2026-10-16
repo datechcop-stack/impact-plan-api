@@ -183,6 +183,9 @@ model Plan {
   createdById        String
   lineManagerComment String?
   recommendation     String?
+  employeeFeedback   String?
+  employeeFeedbackAt DateTime?
+  revisionOpen       Boolean    @default(false)
   submittedAt        DateTime?
   finalizedAt        DateTime?
   finalScore         Decimal?   @db.Decimal(5, 2)

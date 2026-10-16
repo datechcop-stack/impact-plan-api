@@ -6,6 +6,8 @@ import {
 } from "../../domain/lifecycle.js";
 import { computePlanScore, roundDisplay } from "../../domain/scoring.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
+import type { Mailer } from "../emails/mailer.js";
+import { emailDistinct, firstName, reviewStepEmailHtml } from "../emails/mailer.js";
 
 export class LineManagerService {
   constructor(private readonly db: PrismaClient) {}
@@ -215,7 +217,13 @@ export class LineManagerService {
     return this.getPersonPlan(managerId, userId);
   }
 
-  async finalize(managerId: string, userId: string, comment?: string, recommendation?: string) {
+  async finalize(
+    managerId: string,
+    userId: string,
+    comment?: string,
+    recommendation?: string,
+    mailer?: Mailer,
+  ) {
     const data = await this.getPersonPlan(managerId, userId);
     if (!isLineManagerFinalizeOpen(data.plan.status)) {
       throw forbidden("Plan cannot be finalized in its current state.");
@@ -241,6 +249,8 @@ export class LineManagerService {
           recommendation: recommendation?.trim() || data.plan.recommendation,
           finalizedAt: new Date(),
           finalScore: data.score.finalScore,
+          revisionOpen: false,
+          employeeFeedbackAt: null,
         },
       }),
       this.db.changeLog.create({
@@ -252,6 +262,27 @@ export class LineManagerService {
         },
       }),
     ]);
+
+    if (mailer) {
+      const owner = await this.db.user.findUnique({
+        where: { id: data.plan.ownerId },
+        select: { fullName: true, email: true },
+      });
+      if (owner) {
+        await emailDistinct(mailer, [owner], () => ({
+          subject: `Add your feedback · Impact Plan ${data.plan.year}`,
+          html: reviewStepEmailHtml({
+            firstName: firstName(owner.fullName),
+            heading: "Your line manager has finalized your plan",
+            paragraphs: [
+              `Your Impact Plan ${data.plan.year} has a line manager comment and recommendation.`,
+              "Add your employee feedback and submit it. That submit concludes the plan for the year.",
+            ],
+          }),
+          text: `Your line manager finalized Impact Plan ${data.plan.year}. Add your feedback and submit to conclude the year.`,
+        }));
+      }
+    }
 
     return this.getPersonPlan(managerId, userId);
   }

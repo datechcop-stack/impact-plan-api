@@ -33,6 +33,11 @@ export const saveEntriesSchema = z.object({
   removedEntryIds: z.array(z.string().cuid()).default([]),
 });
 
+export const employeeFeedbackSchema = z.object({
+  feedback: z.string().trim().min(1).max(5000),
+  year: z.number().int().optional(),
+});
+
 export const selfAssessmentSchema = z.object({
   result: z.enum(["ACHIEVED", "PARTLY", "NOT"]),
   resultText: z.string().min(1).max(5000),

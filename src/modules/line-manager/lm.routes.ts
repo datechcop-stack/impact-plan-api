@@ -3,11 +3,13 @@ import { z } from "zod";
 import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
+import { createMailer } from "../emails/mailer.js";
 import { lmCommentSchema, lmListQuerySchema } from "./lm.schemas.js";
 import { LineManagerService } from "./lm.service.js";
 
-export const lineManagerRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
+export const lineManagerRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
   const service = new LineManagerService(prisma);
+  const mailer = createMailer(opts.env);
 
   app.get("/lm/people", { preHandler: authenticateRequest }, async (request) =>
     service.listPeople(request.authUser!.id, lmListQuerySchema.parse(request.query)),
@@ -64,6 +66,7 @@ export const lineManagerRoutes: FastifyPluginAsync<{ env: Env }> = async (app) =
         (request.params as { userId: string }).userId,
         body.comment,
         body.recommendation,
+        mailer,
       );
     },
   );

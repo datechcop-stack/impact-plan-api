@@ -26,7 +26,10 @@ export const navRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
               plan: { year, status: "IN_REVIEW", submittedAt: { not: null } },
             },
           },
-          select: { pmReview: { select: { status: true, score: true } } },
+          select: {
+            pmReview: { select: { status: true, score: true } },
+            component: { select: { plan: { select: { revisionOpen: true } } } },
+          },
         }),
         prisma.user.count({
           where: { lineManagerId: userId, status: { in: ["ACTIVE", "INVITED"] } },
@@ -45,7 +48,7 @@ export const navRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
       ]);
 
     const scoringAwaiting = scoringEntries.filter(
-      (entry) => !isPmScoreComplete(entry.pmReview),
+      (entry) => entry.component.plan.revisionOpen || !isPmScoreComplete(entry.pmReview),
     ).length;
 
     return {

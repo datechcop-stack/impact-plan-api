@@ -72,11 +72,12 @@ export class PmService {
       const selfAssessmentSubmitted = Boolean(entry.component.plan.submittedAt);
       const scored = isPmScoreComplete(entry.pmReview);
       const goalReviewed = entry.pmReview?.status === "REVIEWED";
+      const revisionOpen = Boolean(entry.component.plan.revisionOpen) && planStatus === "IN_REVIEW";
       let bucket: "AWAITING" | "NOT_SUBMITTED" | "REVIEWED" = "NOT_SUBMITTED";
       let reviewPhase: "GOAL" | "SCORING" | null = null;
       if (scoringReview && (selfAssessmentSubmitted || planStatus === "FINALIZED")) {
         reviewPhase = "SCORING";
-        bucket = scored ? "REVIEWED" : "AWAITING";
+        bucket = revisionOpen || !scored ? "AWAITING" : "REVIEWED";
       } else if (goalReview) {
         reviewPhase = "GOAL";
         bucket = goalReviewed ? "REVIEWED" : "AWAITING";
@@ -135,6 +136,7 @@ export class PmService {
         reviewed: group.items.filter((i) => i.bucket === "REVIEWED").length,
         notSubmitted: group.items.every((i) => i.bucket === "NOT_SUBMITTED"),
         planStatus: group.items[0]?.entry.component.plan.status ?? "DRAFT",
+        revisionOpen: Boolean(group.items[0]?.entry.component.plan.revisionOpen),
         entries: group.items.map((i) => ({
           id: i.entry.id,
           title: i.entry.title,
@@ -169,6 +171,13 @@ export class PmService {
       const status = item.component.plan.status as never;
       if (isPmGoalReviewOpen(status)) return item.pmReview?.status !== "REVIEWED";
       if (
+        isPmScoringOpen(status) &&
+        item.component.plan.revisionOpen &&
+        Boolean(item.component.plan.submittedAt)
+      ) {
+        return true;
+      }
+      if (
         (isPmScoringOpen(status) || status === "FINALIZED") &&
         Boolean(item.component.plan.submittedAt)
       ) {
@@ -186,6 +195,7 @@ export class PmService {
         weight: entry.component.weight,
         owner: entry.component.plan.owner,
         planStatus: entry.component.plan.status,
+        revisionOpen: entry.component.plan.revisionOpen,
         submittedAt: entry.component.plan.submittedAt?.toISOString() ?? null,
         selfAssessment: entry.selfAssessment,
         pmReview: entry.pmReview,

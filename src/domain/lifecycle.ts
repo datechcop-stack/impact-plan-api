@@ -9,7 +9,8 @@ export type PlanTransition =
   | "RELOCK"
   | "OPEN_REVIEW"
   | "SUBMIT_SELF_ASSESSMENT"
-  | "FINALIZE";
+  | "FINALIZE"
+  | "REOPEN";
 
 const transitions: Record<PlanStatus, Partial<Record<PlanTransition, PlanStatus>>> = {
   DRAFT: {
@@ -36,7 +37,9 @@ const transitions: Record<PlanStatus, Partial<Record<PlanTransition, PlanStatus>
   IN_REVIEW: {
     FINALIZE: "FINALIZED",
   },
-  FINALIZED: {},
+  FINALIZED: {
+    REOPEN: "IN_REVIEW",
+  },
 };
 
 export class IllegalPlanTransitionError extends Error {

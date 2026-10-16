@@ -4,11 +4,13 @@ import type { Env } from "../../env.js";
 import { prisma } from "../../lib/prisma.js";
 import { requireAdmin } from "../auth/require-admin.js";
 import { requireCsrf } from "../auth/auth.routes.js";
+import { createMailer } from "../emails/mailer.js";
 import { createPlanSchema, listPlansQuerySchema, updatePlanDraftSchema } from "./plans.schemas.js";
 import { PlansService } from "./plans.service.js";
 
-export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
+export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
   const service = new PlansService(prisma);
+  const mailer = createMailer(opts.env);
 
   app.get("/admin/plans", { preHandler: requireAdmin }, async (request) =>
     service.list(listPlansQuerySchema.parse(request.query)),
@@ -78,6 +80,20 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app) => {
       ],
     },
     async (request) => service.lock(request.authUser!.id, (request.params as { id: string }).id),
+  );
+
+  app.post(
+    "/admin/plans/:id/reopen",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) =>
+      service.reopen(request.authUser!.id, (request.params as { id: string }).id, mailer),
   );
 
   app.get("/admin/plans/export", { preHandler: requireAdmin }, async (request) => {

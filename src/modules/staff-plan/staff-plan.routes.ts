@@ -10,6 +10,7 @@ import { normalizePlanComponentTemplate } from "../../domain/plan-component-temp
 import { PlansService } from "../plans/plans.service.js";
 import {
   editRequestCreateSchema,
+  employeeFeedbackSchema,
   saveEntriesSchema,
   selfAssessmentSchema,
 } from "./staff-plan.schemas.js";
@@ -214,5 +215,25 @@ export const staffPlanRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opt
       ],
     },
     async (request) => service.submit(request.authUser!.id, new Date().getFullYear(), mailer),
+  );
+
+  app.post(
+    "/me/plan/feedback",
+    {
+      preHandler: [
+        authenticateRequest,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const body = employeeFeedbackSchema.parse(request.body);
+      return service.submitEmployeeFeedback(
+        request.authUser!.id,
+        body.feedback,
+        body.year ?? new Date().getFullYear(),
+      );
+    },
   );
 };
