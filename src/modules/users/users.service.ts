@@ -141,6 +141,64 @@ export class UsersService {
     };
   }
 
+  async bulkInvite(
+    actorId: string,
+    input: {
+      invites: Array<{
+        fullName: string;
+        email: string;
+        jobTitle?: string;
+        lineManagerEmail?: string;
+        role: "STAFF" | "ADMIN";
+      }>;
+      remindCreatePlan: boolean;
+    },
+  ) {
+    const failed: Array<{ email: string; message: string }> = [];
+    let invited = 0;
+    const seenEmails = new Set<string>();
+
+    for (const row of input.invites) {
+      const email = row.email.toLowerCase();
+      if (seenEmails.has(email)) {
+        failed.push({ email, message: "Duplicate email in this upload." });
+        continue;
+      }
+      seenEmails.add(email);
+
+      let lineManagerId: string | null = null;
+      if (row.lineManagerEmail) {
+        const managerEmail = row.lineManagerEmail.toLowerCase();
+        const manager = await this.db.user.findUnique({ where: { email: managerEmail } });
+        if (!manager) {
+          failed.push({
+            email,
+            message: `Line manager not found: ${row.lineManagerEmail}`,
+          });
+          continue;
+        }
+        lineManagerId = manager.id;
+      }
+
+      try {
+        await this.invite(actorId, {
+          fullName: row.fullName,
+          email,
+          jobTitle: row.jobTitle,
+          lineManagerId,
+          role: row.role,
+          remindCreatePlan: input.remindCreatePlan,
+        });
+        invited += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invite failed.";
+        failed.push({ email, message });
+      }
+    }
+
+    return { invited, failed };
+  }
+
   async resendInvite(actorId: string, userId: string) {
     const user = await this.db.user.findUnique({
       where: { id: userId },

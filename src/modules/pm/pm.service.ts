@@ -1,5 +1,10 @@
 import type { PrismaClient } from "@prisma/client";
-import { isPmGoalReviewOpen, isPmScoreComplete, isPmScoringOpen } from "../../domain/lifecycle.js";
+import {
+  isPmGoalReviewOpen,
+  isPmScoreComplete,
+  isPmScoringOpen,
+  type PlanStatus,
+} from "../../domain/lifecycle.js";
 import { entryObjectivesInclude } from "../../domain/objectives.js";
 import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 import type { Mailer } from "../emails/mailer.js";
@@ -335,10 +340,20 @@ export class PmService {
   }
 
   private assertReviewAllowed(entry: {
+    selfAssessment: unknown;
     component: { plan: { status: string; submittedAt: Date | null } };
   }) {
-    const status = entry.component.plan.status as never;
-    if (isPmScoringOpen(status) || isPmGoalReviewOpen(status)) {
+    const status = entry.component.plan.status as PlanStatus;
+    if (isPmGoalReviewOpen(status)) {
+      return;
+    }
+    if (isPmScoringOpen(status) || status === "FINALIZED") {
+      if (!entry.component.plan.submittedAt) {
+        throw forbidden("The owner has not submitted their self-assessment for this plan yet.");
+      }
+      if (!entry.selfAssessment) {
+        throw badRequest("This entry does not have a self-assessment yet.");
+      }
       return;
     }
     throw forbidden("PM review is not open for this plan yet.");

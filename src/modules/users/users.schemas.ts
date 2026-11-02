@@ -25,3 +25,16 @@ export const listUsersQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });
+
+export const bulkInviteRowSchema = z.object({
+  fullName: z.string().min(2),
+  email: z.string().email(),
+  jobTitle: z.string().min(1).optional(),
+  lineManagerEmail: z.string().email().optional(),
+  role: z.enum(["STAFF", "ADMIN"]).default("STAFF"),
+});
+
+export const bulkInviteSchema = z.object({
+  invites: z.array(bulkInviteRowSchema).min(1).max(500),
+  remindCreatePlan: z.boolean().default(true),
+});

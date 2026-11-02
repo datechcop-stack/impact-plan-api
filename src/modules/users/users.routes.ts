@@ -4,7 +4,12 @@ import { prisma } from "../../lib/prisma.js";
 import { createMailer } from "../emails/mailer.js";
 import { requireAdmin } from "../auth/require-admin.js";
 import { authenticateRequest, requireCsrf } from "../auth/auth.routes.js";
-import { inviteUserSchema, listUsersQuerySchema, updateUserSchema } from "./users.schemas.js";
+import {
+  bulkInviteSchema,
+  inviteUserSchema,
+  listUsersQuerySchema,
+  updateUserSchema,
+} from "./users.schemas.js";
 import { UsersService } from "./users.service.js";
 
 export const usersRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
@@ -27,6 +32,22 @@ export const usersRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
     async (request) => {
       const body = inviteUserSchema.parse(request.body);
       return service.invite(request.authUser!.id, body);
+    },
+  );
+
+  app.post(
+    "/admin/users/bulk-invite",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const body = bulkInviteSchema.parse(request.body);
+      return service.bulkInvite(request.authUser!.id, body);
     },
   );
 

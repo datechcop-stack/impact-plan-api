@@ -189,15 +189,19 @@ export class LineManagerService {
     const entries = plan.components.filter((c) => c.enabled).flatMap((c) => c.entries);
     const pmDone = entries.filter((entry) => isPmScoreComplete(entry.pmReview)).length;
 
+    const selfAssessmentSubmitted = Boolean(plan.submittedAt);
+    const pmReviewed = pmDone === entries.length && entries.length > 0;
+
     return {
       plan,
       score,
       checklist: {
-        selfAssessmentSubmitted: Boolean(plan.submittedAt),
-        pmReviewed: pmDone === entries.length && entries.length > 0,
+        selfAssessmentSubmitted,
+        pmReviewed,
         pmDone,
         pmTotal: entries.length,
         commentAdded: Boolean(plan.lineManagerComment?.trim()),
+        readyForFinalReview: selfAssessmentSubmitted && pmReviewed,
       },
     };
   }
@@ -206,6 +210,11 @@ export class LineManagerService {
     const data = await this.getPersonPlan(managerId, userId);
     if (!isLineManagerFinalizeOpen(data.plan.status)) {
       throw forbidden("Plan is not ready for line-manager comment.");
+    }
+    if (!data.checklist.readyForFinalReview) {
+      throw forbidden(
+        "Final review is available after the employee submits self-assessment and every entry is PM scored.",
+      );
     }
     await this.db.plan.update({
       where: { id: data.plan.id },
