@@ -13,6 +13,7 @@ describe("GET /health", () => {
     expect(response.json()).toMatchObject({
       status: "ok",
       service: "impact-plan-api",
+      apiVersion: 2,
     });
 
     await app.close();

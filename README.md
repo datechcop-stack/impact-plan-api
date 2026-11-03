@@ -41,6 +41,8 @@ pnpm dev
 - API: http://localhost:4000
 - Swagger: http://localhost:4000/docs
 
+**Verify the running process is current:** `GET /health` should include `"apiVersion":2`, and `GET /v1/auth/csrf` should return **200**. If you see `Route POST:/v1/... not found`, an old API build is still bound to port 4000 — stop it and run `pnpm dev` again from this repo.
+
 ### Seed accounts
 
 | Email                    | Password      | Notes                  |
