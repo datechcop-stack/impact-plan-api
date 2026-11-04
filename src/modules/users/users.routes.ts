@@ -84,6 +84,22 @@ export const usersRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
     },
   );
 
+  app.post(
+    "/admin/users/:id/revoke-invite",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return service.revokeInvite(request.authUser!.id, id);
+    },
+  );
+
   app.delete(
     "/admin/users/:id",
     {

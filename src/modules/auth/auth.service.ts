@@ -24,7 +24,12 @@ export class AuthService {
 
   async lookupInvite(token: string) {
     const invitation = await this.repo.findInvitationByTokenHash(hashToken(token));
-    if (!invitation || invitation.usedAt || invitation.expiresAt < new Date()) {
+    if (
+      !invitation ||
+      invitation.usedAt ||
+      invitation.expiresAt < new Date() ||
+      invitation.user.status === "DISABLED"
+    ) {
       throw badRequest("This invitation is invalid or has expired.");
     }
     const firstName = invitation.user.fullName.split(" ")[0] ?? invitation.user.fullName;
@@ -218,7 +223,12 @@ export class AuthService {
 
   private async requireOpenInvitation(token: string) {
     const invitation = await this.repo.findInvitationByTokenHash(hashToken(token));
-    if (!invitation || invitation.usedAt || invitation.expiresAt < new Date()) {
+    if (
+      !invitation ||
+      invitation.usedAt ||
+      invitation.expiresAt < new Date() ||
+      invitation.user.status === "DISABLED"
+    ) {
       throw badRequest("This invitation is invalid or has expired.");
     }
     return invitation;
