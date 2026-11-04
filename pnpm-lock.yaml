@@ -31,6 +31,9 @@ importers:
       "@prisma/client":
         specifier: 6.16.2
         version: 6.16.2(prisma@6.16.2(typescript@5.9.2))(typescript@5.9.2)
+      "@types/node":
+        specifier: ^26.6.3
+        version: 26.6.3
       dotenv:
         specifier: ^18.0.5
         version: 18.0.5
@@ -68,9 +71,6 @@ importers:
       "@eslint/js":
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.11.0(jiti@2.7.0))
-      "@types/node":
-        specifier: ^26.6.3
-        version: 26.6.3
       "@types/supertest":
         specifier: ^7.2.1
         version: 7.2.1
