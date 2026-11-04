@@ -74,6 +74,24 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
       return reply.status(error.statusCode).send(toErrorEnvelope(error));
     }
 
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof (error as { statusCode: unknown }).statusCode === "number"
+    ) {
+      const statusCode = (error as { statusCode: number }).statusCode;
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Request could not be processed.";
+      if (statusCode >= 400 && statusCode < 500) {
+        return reply
+          .status(statusCode)
+          .send(toErrorEnvelope(new AppError("BAD_REQUEST", message, statusCode)));
+      }
+    }
+
     if (error instanceof ZodError) {
       return reply
         .status(422)
