@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { entryObjectivesInclude } from "../../domain/objectives.js";
 import {
   applyTransition,
   isLineManagerFinalizeOpen,
@@ -15,7 +16,7 @@ export class LineManagerService {
   async listPeople(
     managerId: string,
     query: {
-      status: "ALL" | "DRAFT" | "LOCKED" | "IN_REVIEW" | "FINALIZED";
+      status: "ALL" | "NONE" | "DRAFT" | "LOCKED" | "IN_REVIEW" | "FINALIZED";
       year?: number;
     },
   ) {
@@ -66,7 +67,7 @@ export class LineManagerService {
           )
         : null;
 
-      let uiStatus: "DRAFT" | "LOCKED" | "IN_REVIEW" | "FINALIZED" | "NONE";
+      let uiStatus: "NONE" | "DRAFT" | "LOCKED" | "IN_REVIEW" | "FINALIZED";
       if (!plan) uiStatus = "NONE";
       else if (plan.status === "DRAFT") uiStatus = "DRAFT";
       else if (plan.status === "FINALIZED") uiStatus = "FINALIZED";
@@ -97,11 +98,14 @@ export class LineManagerService {
 
     const filtered =
       query.status === "ALL"
-        ? items.filter((i) => i.uiStatus !== "NONE")
-        : items.filter((i) => i.uiStatus === query.status);
+        ? items
+        : query.status === "NONE"
+          ? items.filter((i) => i.uiStatus === "NONE")
+          : items.filter((i) => i.uiStatus === query.status);
 
     const counts = {
-      all: items.filter((i) => i.uiStatus !== "NONE").length,
+      all: items.length,
+      none: items.filter((i) => i.uiStatus === "NONE").length,
       draft: items.filter((i) => i.uiStatus === "DRAFT").length,
       locked: items.filter((i) => i.uiStatus === "LOCKED").length,
       inReview: items.filter((i) => i.uiStatus === "IN_REVIEW").length,
@@ -124,7 +128,7 @@ export class LineManagerService {
       reviewCycle,
       yearEndProgress: {
         finalized: counts.finalized,
-        total: counts.all,
+        total: items.filter((i) => i.uiStatus !== "NONE").length,
       },
       items: filtered,
     };
@@ -158,6 +162,7 @@ export class LineManagerService {
                 pmReview: {
                   include: { reviewer: { select: { fullName: true } } },
                 },
+                ...entryObjectivesInclude,
               },
               orderBy: { sortOrder: "asc" },
             },
@@ -191,6 +196,8 @@ export class LineManagerService {
 
     const selfAssessmentSubmitted = Boolean(plan.submittedAt);
     const pmReviewed = pmDone === entries.length && entries.length > 0;
+    const readyForFinalReview = selfAssessmentSubmitted && pmReviewed;
+    const canLineManagerReview = isLineManagerFinalizeOpen(plan.status) && readyForFinalReview;
 
     return {
       plan,
@@ -201,7 +208,11 @@ export class LineManagerService {
         pmDone,
         pmTotal: entries.length,
         commentAdded: Boolean(plan.lineManagerComment?.trim()),
-        readyForFinalReview: selfAssessmentSubmitted && pmReviewed,
+        readyForFinalReview,
+      },
+      permissions: {
+        canComment: canLineManagerReview,
+        canFinalize: canLineManagerReview,
       },
     };
   }

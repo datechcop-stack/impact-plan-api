@@ -22,6 +22,10 @@ export const updateUserSchema = z.object({
 
 export const listUsersQuerySchema = z.object({
   q: z.string().optional(),
+  status: z
+    .enum(["ALL", "ACTIVE", "INVITED", "INVITE_EXPIRED", "DISABLED"])
+    .optional()
+    .default("ALL"),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });

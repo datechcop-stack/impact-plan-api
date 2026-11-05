@@ -96,6 +96,19 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
       service.reopen(request.authUser!.id, (request.params as { id: string }).id, mailer),
   );
 
+  app.delete(
+    "/admin/plans/:id",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => service.remove(request.authUser!.id, (request.params as { id: string }).id),
+  );
+
   app.get("/admin/plans/export", { preHandler: requireAdmin }, async (request) => {
     const year = Number((request.query as { year?: string }).year ?? new Date().getFullYear());
     const csv = await service.exportYearCsv(year);

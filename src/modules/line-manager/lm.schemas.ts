@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const lmListQuerySchema = z.object({
-  status: z.enum(["ALL", "DRAFT", "LOCKED", "IN_REVIEW", "FINALIZED"]).default("ALL"),
+  status: z.enum(["ALL", "NONE", "DRAFT", "LOCKED", "IN_REVIEW", "FINALIZED"]).default("ALL"),
   year: z.coerce.number().int().optional(),
 });
 

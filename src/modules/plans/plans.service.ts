@@ -590,6 +590,34 @@ export class PlansService {
     return rows.join("\n");
   }
 
+  async remove(actorId: string, planId: string) {
+    const plan = await this.db.plan.findUnique({
+      where: { id: planId },
+      select: { id: true, year: true, ownerId: true, status: true },
+    });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+
+    await this.db.$transaction(async (tx) => {
+      await tx.changeLog.create({
+        data: {
+          actorId,
+          action: "PLAN_DELETED",
+          metadata: {
+            planId: plan.id,
+            ownerId: plan.ownerId,
+            year: plan.year,
+            status: plan.status,
+          },
+        },
+      });
+      await tx.plan.delete({ where: { id: planId } });
+    });
+
+    return { ok: true };
+  }
+
   async previousYearTemplate(ownerId: string, year: number) {
     const previous = await this.db.plan.findUnique({
       where: { ownerId_year: { ownerId, year: year - 1 } },

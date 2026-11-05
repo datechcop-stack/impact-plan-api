@@ -14,15 +14,41 @@ export class UsersService {
     private readonly mailer: Mailer,
   ) {}
 
-  async list(query: { q?: string; page: number; pageSize: number }) {
-    const where = query.q
-      ? {
+  async list(query: {
+    q?: string;
+    status?: "ALL" | "ACTIVE" | "INVITED" | "INVITE_EXPIRED" | "DISABLED";
+    page: number;
+    pageSize: number;
+  }) {
+    const now = new Date();
+    const and: Prisma.UserWhereInput[] = [];
+    if (query.status && query.status !== "ALL") {
+      if (query.status === "INVITE_EXPIRED") {
+        and.push({
+          status: "INVITED",
+          invitation: { expiresAt: { lt: now }, usedAt: null },
+        });
+      } else if (query.status === "INVITED") {
+        and.push({
+          status: "INVITED",
           OR: [
-            { fullName: { contains: query.q, mode: "insensitive" as const } },
-            { email: { contains: query.q, mode: "insensitive" as const } },
+            { invitation: { is: null } },
+            { invitation: { expiresAt: { gte: now }, usedAt: null } },
           ],
-        }
-      : {};
+        });
+      } else {
+        and.push({ status: query.status });
+      }
+    }
+    if (query.q) {
+      and.push({
+        OR: [
+          { fullName: { contains: query.q, mode: "insensitive" as const } },
+          { email: { contains: query.q, mode: "insensitive" as const } },
+        ],
+      });
+    }
+    const where: Prisma.UserWhereInput = and.length ? { AND: and } : {};
 
     const [total, users] = await Promise.all([
       this.db.user.count({ where }),

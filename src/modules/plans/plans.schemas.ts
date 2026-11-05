@@ -51,10 +51,20 @@ export const updatePlanDraftSchema = z.object({
   entries: z.array(draftEntryInput).optional(),
 });
 
+const planStatusFilter = z.enum([
+  "DRAFT",
+  "LOCKED",
+  "PARTLY_UNLOCKED",
+  "UNLOCKED",
+  "REVIEW_OPEN",
+  "IN_REVIEW",
+  "FINALIZED",
+]);
+
 export const listPlansQuerySchema = z.object({
   year: z.coerce.number().int().optional(),
   q: z.string().optional(),
-  status: z.string().optional(),
+  status: planStatusFilter.optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });
