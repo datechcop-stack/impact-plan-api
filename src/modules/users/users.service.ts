@@ -5,6 +5,7 @@ import { generateOpaqueToken } from "../../lib/crypto.js";
 import { planComponentTemplateSchema } from "../../domain/plan-component-template.js";
 import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
+import { ARCHIVE_TX_OPTIONS, archiveUser } from "../archive/archive.js";
 import { type Mailer, inviteEmailHtml, sendMail } from "../emails/mailer.js";
 
 export class UsersService {
@@ -21,34 +22,45 @@ export class UsersService {
     pageSize: number;
   }) {
     const now = new Date();
-    const and: Prisma.UserWhereInput[] = [];
-    if (query.status && query.status !== "ALL") {
-      if (query.status === "INVITE_EXPIRED") {
-        and.push({
-          status: "INVITED",
-          invitation: { expiresAt: { lt: now }, usedAt: null },
-        });
-      } else if (query.status === "INVITED") {
-        and.push({
+    const statusWhere = (
+      status: "ACTIVE" | "INVITED" | "INVITE_EXPIRED" | "DISABLED",
+    ): Prisma.UserWhereInput => {
+      if (status === "INVITE_EXPIRED") {
+        return { status: "INVITED", invitation: { expiresAt: { lt: now }, usedAt: null } };
+      }
+      if (status === "INVITED") {
+        return {
           status: "INVITED",
           OR: [
             { invitation: { is: null } },
             { invitation: { expiresAt: { gte: now }, usedAt: null } },
           ],
-        });
-      } else {
-        and.push({ status: query.status });
+        };
       }
-    }
-    if (query.q) {
-      and.push({
-        OR: [
-          { fullName: { contains: query.q, mode: "insensitive" as const } },
-          { email: { contains: query.q, mode: "insensitive" as const } },
-        ],
-      });
-    }
-    const where: Prisma.UserWhereInput = and.length ? { AND: and } : {};
+      return { status };
+    };
+    const searchWhere: Prisma.UserWhereInput = query.q
+      ? {
+          OR: [
+            { fullName: { contains: query.q, mode: "insensitive" as const } },
+            { email: { contains: query.q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    const where: Prisma.UserWhereInput =
+      query.status && query.status !== "ALL"
+        ? { AND: [searchWhere, statusWhere(query.status)] }
+        : searchWhere;
+    const countFor = (status: "ACTIVE" | "INVITED" | "INVITE_EXPIRED" | "DISABLED") =>
+      this.db.user.count({ where: { AND: [searchWhere, statusWhere(status)] } });
+
+    const [all, active, invited, inviteExpired, disabled] = await Promise.all([
+      this.db.user.count({ where: searchWhere }),
+      countFor("ACTIVE"),
+      countFor("INVITED"),
+      countFor("INVITE_EXPIRED"),
+      countFor("DISABLED"),
+    ]);
 
     const [total, users] = await Promise.all([
       this.db.user.count({ where }),
@@ -68,6 +80,7 @@ export class UsersService {
       total,
       page: query.page,
       pageSize: query.pageSize,
+      counts: { all, active, invited, inviteExpired, disabled },
       items: users.map((user) => this.serialize(user)),
     };
   }
@@ -294,8 +307,7 @@ export class UsersService {
   }
 
   /**
-   * Cancel a pending invitation. Clears line-manager links, then hard-deletes when
-   * there is no plan or audit history to retain; otherwise disables the account.
+   * Cancel a pending invitation. The invited user is archived, then removed from the app.
    */
   async revokeInvite(actorId: string, userId: string) {
     if (actorId === userId) {
@@ -313,14 +325,8 @@ export class UsersService {
       throw badRequest("Only pending invitations can be revoked.");
     }
 
-    const retain = this.hasRetainableHistory(user);
-    if (!retain) {
-      await this.hardDeleteUser(actorId, userId, user.email, "deleted", "USER_INVITE_REVOKED");
-      return { ok: true, mode: "deleted" as const };
-    }
-
-    await this.disableUser(actorId, userId, user.email, "disabled", "USER_INVITE_REVOKED");
-    return { ok: true, mode: "disabled" as const };
+    await this.purgeUserCompletely(actorId, userId, user.email, "USER_INVITE_REVOKED");
+    return { ok: true, mode: "deleted" as const };
   }
 
   async update(
@@ -350,9 +356,8 @@ export class UsersService {
   }
 
   /**
-   * Remove a staff member from the system.
-   * Never-activated invites with no plan history are hard-deleted.
-   * Otherwise the account is disabled and sessions are revoked.
+   * Delete a user and their owned impact plans from the app. A full copy is kept in
+   * DeletedRecord, so the record is still available for audit or restore.
    */
   async remove(actorId: string, userId: string) {
     if (actorId === userId) {
@@ -365,9 +370,6 @@ export class UsersService {
     });
     if (!user) {
       throw notFound("User not found.");
-    }
-    if (user.status === "DISABLED") {
-      throw badRequest("This user is already removed.");
     }
 
     if (user.status === "INVITED") {
@@ -387,8 +389,8 @@ export class UsersService {
       }
     }
 
-    await this.disableUser(actorId, userId, user.email, "disabled", "USER_REMOVED");
-    return { ok: true, mode: "disabled" as const };
+    await this.purgeUserCompletely(actorId, userId, user.email, "USER_REMOVED");
+    return { ok: true, mode: "deleted" as const };
   }
 
   async lookup(q: string) {
@@ -526,89 +528,57 @@ export class UsersService {
     } as const;
   }
 
-  private hasRetainableHistory(user: {
-    ownedPlans: { id: string }[];
-    createdPlans: { id: string }[];
-    managedEntries: { id: string }[];
-    pmReviews: { id: string }[];
-    editRequests: { id: string }[];
-    editDecisions: { id: string }[];
-    changeLogs: { id: string }[];
-    reviewCycleParticipants: { id: string }[];
-  }) {
-    return (
-      user.ownedPlans.length > 0 ||
-      user.createdPlans.length > 0 ||
-      user.managedEntries.length > 0 ||
-      user.pmReviews.length > 0 ||
-      user.editRequests.length > 0 ||
-      user.editDecisions.length > 0 ||
-      user.changeLogs.length > 0 ||
-      user.reviewCycleParticipants.length > 0
-    );
-  }
-
-  private async hardDeleteUser(
+  /** Archive the user, then remove them and everything they own from the live tables. */
+  private async purgeUserCompletely(
     actorId: string,
     userId: string,
     email: string,
-    mode: "deleted",
     action: "USER_REMOVED" | "USER_INVITE_REVOKED",
   ) {
     await this.db.$transaction(async (tx) => {
+      const archived = await archiveUser(tx, actorId, userId, action);
+
       await tx.user.updateMany({
         where: { lineManagerId: userId },
         data: { lineManagerId: null },
       });
-      await tx.session.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+
+      await tx.plan.deleteMany({ where: { ownerId: userId } });
+
+      await tx.plan.updateMany({
+        where: { createdById: userId },
+        data: { createdById: actorId },
+      });
+      await tx.planEntry.updateMany({
+        where: { managerId: userId },
+        data: { managerId: actorId },
+      });
+      await tx.pmReview.updateMany({
+        where: { reviewerId: userId },
+        data: { reviewerId: actorId },
+      });
+      await tx.editRequest.deleteMany({ where: { requesterId: userId } });
+      await tx.editRequest.updateMany({
+        where: { decidedById: userId },
+        data: { decidedById: null },
+      });
+      await tx.changeLog.deleteMany({ where: { actorId: userId } });
+      await tx.invitation.updateMany({
+        where: { invitedById: userId },
+        data: { invitedById: actorId },
       });
       await tx.invitation.deleteMany({ where: { userId } });
+
       await tx.user.delete({ where: { id: userId } });
-      await tx.changeLog.create({
-        data: {
-          actorId,
-          action,
-          metadata: { userId, email, mode },
-        },
-      });
-    });
-  }
 
-  private async disableUser(
-    actorId: string,
-    userId: string,
-    email: string,
-    mode: "disabled",
-    action: "USER_REMOVED" | "USER_INVITE_REVOKED",
-  ) {
-    await this.db.$transaction(async (tx) => {
-      await tx.session.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-      await tx.invitation.deleteMany({ where: { userId } });
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          status: "DISABLED",
-          passwordHash: null,
-          authMethod: "UNSET",
-        },
-      });
-      await tx.user.updateMany({
-        where: { lineManagerId: userId },
-        data: { lineManagerId: null },
-      });
       await tx.changeLog.create({
         data: {
           actorId,
           action,
-          metadata: { userId, email, mode },
+          metadata: { userId, email, mode: "archived", archiveId: archived?.id ?? null },
         },
       });
-    });
+    }, ARCHIVE_TX_OPTIONS);
   }
 
   private serialize(user: {
