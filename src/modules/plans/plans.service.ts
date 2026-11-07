@@ -16,6 +16,7 @@ import { validateWeights } from "../../domain/scoring.js";
 import { badRequest, conflict, notFound } from "../../lib/errors.js";
 import type { Mailer } from "../emails/mailer.js";
 import { emailDistinct, firstName, reviewStepEmailHtml } from "../emails/mailer.js";
+import { ARCHIVE_TX_OPTIONS, archivePlan } from "../archive/archive.js";
 import { enrollPlanInOpenYearEndWindow } from "../review-cycle/enroll-plan.js";
 
 type ComponentInput = {
@@ -80,9 +81,8 @@ export class PlansService {
     pageSize: number;
   }) {
     const year = query.year ?? new Date().getFullYear();
-    const where = {
+    const baseWhere = {
       year,
-      ...(query.status ? { status: query.status as never } : {}),
       ...(query.q
         ? {
             owner: {
@@ -94,8 +94,12 @@ export class PlansService {
           }
         : {}),
     };
+    const where = {
+      ...baseWhere,
+      ...(query.status ? { status: query.status as never } : {}),
+    };
 
-    const [total, plans] = await Promise.all([
+    const [total, plans, statusGroups] = await Promise.all([
       this.db.plan.count({ where }),
       this.db.plan.findMany({
         where,
@@ -108,12 +112,22 @@ export class PlansService {
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
+      this.db.plan.groupBy({ by: ["status"], where: baseWhere, _count: { _all: true } }),
     ]);
+
+    const statusCounts: Record<string, number> = {};
+    for (const group of statusGroups) {
+      statusCounts[group.status] = group._count._all;
+    }
 
     return {
       total,
       page: query.page,
       pageSize: query.pageSize,
+      counts: {
+        all: statusGroups.reduce((sum, group) => sum + group._count._all, 0),
+        byStatus: statusCounts,
+      },
       items: plans.map((plan) => ({
         id: plan.id,
         year: plan.year,
@@ -600,6 +614,7 @@ export class PlansService {
     }
 
     await this.db.$transaction(async (tx) => {
+      const archived = await archivePlan(tx, actorId, plan.id, "PLAN_DELETED");
       await tx.changeLog.create({
         data: {
           actorId,
@@ -609,11 +624,12 @@ export class PlansService {
             ownerId: plan.ownerId,
             year: plan.year,
             status: plan.status,
+            archiveId: archived?.id ?? null,
           },
         },
       });
       await tx.plan.delete({ where: { id: planId } });
-    });
+    }, ARCHIVE_TX_OPTIONS);
 
     return { ok: true };
   }
