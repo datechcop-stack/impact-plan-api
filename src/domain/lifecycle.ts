@@ -68,12 +68,24 @@ export function isImmutable(status: PlanStatus): boolean {
   return status === "FINALIZED";
 }
 
-export function isOwnerEditable(status: PlanStatus): boolean {
+export function isOwnerEditable(status: PlanStatus, adminUnlocked = false): boolean {
+  if (adminUnlocked && status !== "DRAFT") return true;
   return status === "PARTLY_UNLOCKED" || status === "UNLOCKED" || status === "REVIEW_OPEN";
 }
 
 export function isSelfAssessmentOpen(status: PlanStatus): boolean {
   return status === "REVIEW_OPEN";
+}
+
+/** Owner may save self-assessment results: while review is open, or later if an admin unlocked it. */
+export function isSelfAssessmentEditable(status: PlanStatus, adminUnlocked = false): boolean {
+  if (isSelfAssessmentOpen(status)) return true;
+  return adminUnlocked && (status === "IN_REVIEW" || status === "FINALIZED");
+}
+
+/** Statuses where an admin unlock keeps the review stage and sets the adminUnlocked flag. */
+export function isReviewStage(status: PlanStatus): boolean {
+  return status === "REVIEW_OPEN" || status === "IN_REVIEW" || status === "FINALIZED";
 }
 
 export function isPmScoringOpen(status: PlanStatus): boolean {

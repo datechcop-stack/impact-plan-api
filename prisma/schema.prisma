@@ -191,6 +191,9 @@ model Plan {
   employeeFeedback   String?
   employeeFeedbackAt DateTime?
   revisionOpen       Boolean    @default(false)
+  /// Set when an admin unlocks a plan that is already in review or finalized. The owner can
+  /// then edit goals and self-assessment at that stage until an admin locks it again.
+  adminUnlocked      Boolean    @default(false)
   submittedAt        DateTime?
   finalizedAt        DateTime?
   finalScore         Decimal?   @db.Decimal(5, 2)

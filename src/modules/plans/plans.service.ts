@@ -1,5 +1,5 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
-import { applyTransition } from "../../domain/lifecycle.js";
+import { applyTransition, isReviewStage } from "../../domain/lifecycle.js";
 import {
   assertObjectivesValid,
   entryObjectivesInclude,
@@ -450,6 +450,98 @@ export class PlansService {
       }),
     ]);
     await enrollPlanInOpenYearEndWindow(this.db, planId, actorId);
+    return this.getById(planId);
+  }
+
+  /**
+   * Admin unlock, no edit request needed.
+   * - Locked / partly unlocked: the whole plan moves to UNLOCKED (same as approving a request).
+   * - Review open, in review, finalized: the stage is kept and `adminUnlocked` is set, so the
+   *   owner can edit goals and self-assessment at that stage until an admin locks it again.
+   */
+  async adminUnlock(actorId: string, planId: string) {
+    const plan = await this.db.plan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (plan.status === "DRAFT") {
+      throw badRequest("Draft plans are already editable by the owner.");
+    }
+    if (plan.status === "UNLOCKED" || plan.adminUnlocked) {
+      throw badRequest("This plan is already unlocked.");
+    }
+
+    const keepStage = isReviewStage(plan.status);
+    const nextStatus = keepStage ? plan.status : applyTransition(plan.status, "UNLOCK_WHOLE");
+
+    await this.db.$transaction(async (tx) => {
+      await tx.plan.update({
+        where: { id: planId },
+        data: { status: nextStatus, adminUnlocked: keepStage },
+      });
+      await tx.planComponent.updateMany({
+        where: { planId, enabled: true },
+        data: { lockState: "UNLOCKED" },
+      });
+      await tx.editRequest.updateMany({
+        where: { planId, status: "PENDING" },
+        data: { status: "UNLOCKED", decidedById: actorId, decidedAt: new Date() },
+      });
+      await tx.changeLog.create({
+        data: {
+          planId,
+          actorId,
+          action: "PLAN_UNLOCKED_BY_ADMIN",
+          metadata: { fromStatus: plan.status, keptStage: keepStage },
+        },
+      });
+    });
+    return this.getById(planId);
+  }
+
+  /**
+   * Admin lock. Drafts are validated and locked for the year; plans an admin (or an approved
+   * edit request) unlocked go back to locked at their current stage.
+   */
+  async adminLock(actorId: string, planId: string) {
+    const plan = await this.db.plan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (plan.status === "DRAFT") {
+      return this.lock(actorId, planId);
+    }
+
+    const relockStatus = plan.status === "UNLOCKED" || plan.status === "PARTLY_UNLOCKED";
+    if (!relockStatus && !plan.adminUnlocked) {
+      throw badRequest("This plan is already locked.");
+    }
+
+    await this.db.$transaction(async (tx) => {
+      await tx.plan.update({
+        where: { id: planId },
+        data: {
+          status: relockStatus ? applyTransition(plan.status, "RELOCK") : plan.status,
+          adminUnlocked: false,
+        },
+      });
+      await tx.planComponent.updateMany({ where: { planId }, data: { lockState: "LOCKED" } });
+      await tx.editRequest.updateMany({
+        where: { planId, status: "UNLOCKED" },
+        data: { status: "COMPLETED" },
+      });
+      await tx.changeLog.create({
+        data: {
+          planId,
+          actorId,
+          action: "PLAN_LOCKED_BY_ADMIN",
+          metadata: { status: plan.status },
+        },
+      });
+    });
+    if (relockStatus) {
+      await enrollPlanInOpenYearEndWindow(this.db, planId, actorId);
+    }
     return this.getById(planId);
   }
 
