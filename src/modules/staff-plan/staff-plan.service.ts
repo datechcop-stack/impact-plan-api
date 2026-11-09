@@ -1,5 +1,10 @@
 import type { ComponentType, PrismaClient } from "@prisma/client";
-import { applyTransition, isOwnerEditable, isSelfAssessmentOpen } from "../../domain/lifecycle.js";
+import {
+  applyTransition,
+  isOwnerEditable,
+  isSelfAssessmentEditable,
+  isSelfAssessmentOpen,
+} from "../../domain/lifecycle.js";
 import type { Mailer } from "../emails/mailer.js";
 import { emailDistinct, firstName, reviewStepEmailHtml } from "../emails/mailer.js";
 import {
@@ -158,14 +163,14 @@ export class StaffPlanService {
     if (!plan) {
       throw notFound("Plan not found.");
     }
-    if (!isOwnerEditable(plan.status)) {
+    if (!isOwnerEditable(plan.status, plan.adminUnlocked)) {
       throw forbidden("Plan is not unlocked for editing.");
     }
 
     const unlockedTypes = new Set(
       plan.components.filter((c) => c.lockState === "UNLOCKED" && c.enabled).map((c) => c.type),
     );
-    if (plan.status === "UNLOCKED" || plan.status === "REVIEW_OPEN") {
+    if (plan.status === "UNLOCKED" || plan.status === "REVIEW_OPEN" || plan.adminUnlocked) {
       plan.components.filter((c) => c.enabled).forEach((c) => unlockedTypes.add(c.type));
     }
 
@@ -251,7 +256,9 @@ export class StaffPlanService {
     if (!entry || entry.component.plan.ownerId !== userId) {
       throw notFound("Entry not found.");
     }
-    if (!isSelfAssessmentOpen(entry.component.plan.status)) {
+    if (
+      !isSelfAssessmentEditable(entry.component.plan.status, entry.component.plan.adminUnlocked)
+    ) {
       throw forbidden("Self-assessment is not open for this plan.");
     }
 

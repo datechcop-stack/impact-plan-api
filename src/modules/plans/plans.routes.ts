@@ -79,7 +79,22 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
         },
       ],
     },
-    async (request) => service.lock(request.authUser!.id, (request.params as { id: string }).id),
+    async (request) =>
+      service.adminLock(request.authUser!.id, (request.params as { id: string }).id),
+  );
+
+  app.post(
+    "/admin/plans/:id/unlock",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) =>
+      service.adminUnlock(request.authUser!.id, (request.params as { id: string }).id),
   );
 
   app.post(

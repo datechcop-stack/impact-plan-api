@@ -6,6 +6,8 @@ import {
   isImmutable,
   isOwnerEditable,
   isPmScoreComplete,
+  isReviewStage,
+  isSelfAssessmentEditable,
 } from "../../src/domain/lifecycle.js";
 import { statusesEligibleToOpen } from "../../src/domain/review-window.js";
 
@@ -56,5 +58,29 @@ describe("plan lifecycle", () => {
     expect(isPmScoreComplete({ status: "REVIEWED", score: null })).toBe(false);
     expect(isPmScoreComplete({ status: "DRAFT", score: 80 })).toBe(false);
     expect(isPmScoreComplete({ status: "REVIEWED", score: 80 })).toBe(true);
+  });
+
+  it("lets an admin unlock open owner editing at any non-draft stage", () => {
+    for (const status of ["LOCKED", "REVIEW_OPEN", "IN_REVIEW", "FINALIZED"] as const) {
+      expect(isOwnerEditable(status, true)).toBe(true);
+    }
+    expect(isOwnerEditable("IN_REVIEW")).toBe(false);
+    expect(isOwnerEditable("FINALIZED")).toBe(false);
+    expect(isOwnerEditable("LOCKED")).toBe(false);
+  });
+
+  it("allows self-assessment edits after submission only when admin unlocked", () => {
+    expect(isSelfAssessmentEditable("REVIEW_OPEN")).toBe(true);
+    expect(isSelfAssessmentEditable("IN_REVIEW")).toBe(false);
+    expect(isSelfAssessmentEditable("IN_REVIEW", true)).toBe(true);
+    expect(isSelfAssessmentEditable("FINALIZED", true)).toBe(true);
+    expect(isSelfAssessmentEditable("LOCKED", true)).toBe(false);
+  });
+
+  it("keeps review stages when an admin unlocks", () => {
+    expect(isReviewStage("REVIEW_OPEN")).toBe(true);
+    expect(isReviewStage("IN_REVIEW")).toBe(true);
+    expect(isReviewStage("FINALIZED")).toBe(true);
+    expect(isReviewStage("LOCKED")).toBe(false);
   });
 });
