@@ -270,6 +270,7 @@ export class LineManagerService {
           finalizedAt: new Date(),
           finalScore: data.score.finalScore,
           revisionOpen: false,
+          lmCommentReopenedAt: null,
           employeeFeedbackAt: null,
         },
       }),

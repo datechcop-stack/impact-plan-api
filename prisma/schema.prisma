@@ -194,6 +194,8 @@ model Plan {
   /// Set when an admin unlocks a plan that is already in review or finalized. The owner can
   /// then edit goals and self-assessment at that stage until an admin locks it again.
   adminUnlocked      Boolean    @default(false)
+  /// Set when an admin reopens the line manager comment on a finalized plan; cleared on finalize.
+  lmCommentReopenedAt DateTime?
   submittedAt        DateTime?
   finalizedAt        DateTime?
   finalScore         Decimal?   @db.Decimal(5, 2)
@@ -295,6 +297,8 @@ model PmReview {
   comment    String?
   status     PmReviewStatus @default(DRAFT)
   reviewedAt DateTime?
+  /// Set when an admin reopens a submitted review for the PM to edit; cleared on resubmit.
+  reopenedAt DateTime?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 

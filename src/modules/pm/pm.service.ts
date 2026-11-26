@@ -277,9 +277,11 @@ export class PmService {
         comment,
         status: "REVIEWED",
         reviewedAt: new Date(),
+        reopenedAt: null,
         reviewerId,
       },
     });
+    const resubmitted = Boolean(entry.pmReview?.reopenedAt);
     await this.db.changeLog.create({
       data: {
         planId: entry.component.planId,
@@ -288,8 +290,10 @@ export class PmService {
           ? input.decision === "REJECT"
             ? "PM_GOALS_REJECTED"
             : "PM_GOALS_ACCEPTED"
-          : "PM_REVIEWED_ENTRY",
-        metadata: { entryId, score, goalPhase, decision: input.decision ?? null },
+          : resubmitted
+            ? "PM_REVIEW_RESUBMITTED"
+            : "PM_REVIEWED_ENTRY",
+        metadata: { entryId, score, goalPhase, decision: input.decision ?? null, resubmitted },
       },
     });
     if (

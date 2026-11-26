@@ -40,6 +40,7 @@ export const employeeFeedbackSchema = z.object({
 
 export const selfAssessmentSchema = z.object({
   result: z.enum(["ACHIEVED", "PARTLY", "NOT"]),
-  resultText: z.string().min(1).max(5000),
+  // No length cap: results can be as long as the staff member needs.
+  resultText: z.string().trim().min(1),
   evidenceUrl: z.string().url().optional().or(z.literal("")),
 });
