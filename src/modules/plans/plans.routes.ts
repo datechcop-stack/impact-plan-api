@@ -111,6 +111,40 @@ export const plansRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) =
       service.reopen(request.authUser!.id, (request.params as { id: string }).id, mailer),
   );
 
+  app.post(
+    "/admin/plans/:id/entries/:entryId/reopen-pm-review",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) => {
+      const { id, entryId } = request.params as { id: string; entryId: string };
+      return service.reopenPmReview(request.authUser!.id, id, entryId, mailer);
+    },
+  );
+
+  app.post(
+    "/admin/plans/:id/reopen-lm-comment",
+    {
+      preHandler: [
+        requireAdmin,
+        async (req) => {
+          requireCsrf(req);
+        },
+      ],
+    },
+    async (request) =>
+      service.reopenLineManagerComment(
+        request.authUser!.id,
+        (request.params as { id: string }).id,
+        mailer,
+      ),
+  );
+
   app.delete(
     "/admin/plans/:id",
     {

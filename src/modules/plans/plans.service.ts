@@ -159,7 +159,7 @@ export class PlansService {
               include: {
                 manager: { select: { id: true, fullName: true } },
                 selfAssessment: true,
-                pmReview: true,
+                pmReview: { include: { reviewer: { select: { id: true, fullName: true } } } },
                 ...entryObjectivesInclude,
               },
               orderBy: { sortOrder: "asc" },
@@ -624,6 +624,129 @@ export class PlansService {
           text: `${plan.owner.fullName}'s Impact Plan ${plan.year} was reopened. Update your comment and recommendation, then finalize again.`,
         }));
       }
+    }
+
+    return this.getById(planId);
+  }
+
+  /**
+   * Send one submitted PM review back to the PM. The score and comment are kept as a draft so
+   * the PM can edit and resubmit. A finalized plan returns to "In review" so the line manager
+   * finalizes again with the updated score.
+   */
+  async reopenPmReview(actorId: string, planId: string, entryId: string, mailer?: Mailer) {
+    const entry = await this.db.planEntry.findFirst({
+      where: { id: entryId, component: { planId } },
+      include: {
+        pmReview: { include: { reviewer: { select: { fullName: true, email: true } } } },
+        component: {
+          include: {
+            plan: { include: { owner: { select: { fullName: true } } } },
+          },
+        },
+      },
+    });
+    if (!entry) {
+      throw notFound("Entry not found.");
+    }
+    if (!entry.pmReview || entry.pmReview.status !== "REVIEWED") {
+      throw badRequest("Only a submitted PM review can be reopened.");
+    }
+    const plan = entry.component.plan;
+    if (!["LOCKED", "IN_REVIEW", "FINALIZED"].includes(plan.status)) {
+      throw badRequest(
+        "A PM review can be reopened during goal review, PM scoring, or after the plan is finalized.",
+      );
+    }
+
+    await this.db.$transaction(async (tx) => {
+      await tx.pmReview.update({
+        where: { entryId },
+        data: { status: "DRAFT", reopenedAt: new Date() },
+      });
+      if (plan.status === "FINALIZED") {
+        await tx.plan.update({
+          where: { id: plan.id },
+          data: { status: applyTransition(plan.status, "REOPEN"), employeeFeedbackAt: null },
+        });
+      }
+      await tx.changeLog.create({
+        data: {
+          planId: plan.id,
+          actorId,
+          action: "PM_REVIEW_REOPENED",
+          metadata: { entryId, reviewerId: entry.pmReview!.reviewerId, planStatus: plan.status },
+        },
+      });
+    });
+
+    if (mailer) {
+      const reviewer = entry.pmReview.reviewer;
+      await emailDistinct(mailer, [reviewer], () => ({
+        subject: `Review reopened · ${plan.owner.fullName} · ${entry.title}`,
+        html: reviewStepEmailHtml({
+          firstName: firstName(reviewer.fullName),
+          heading: "An administrator reopened your review",
+          paragraphs: [
+            `Your review of "${entry.title}" on ${plan.owner.fullName}'s Impact Plan ${plan.year} is open for editing again.`,
+            "Update your score and comment, then resubmit.",
+          ],
+        }),
+        text: `Your review of "${entry.title}" on ${plan.owner.fullName}'s Impact Plan ${plan.year} was reopened. Update it and resubmit.`,
+      }));
+    }
+
+    return this.getById(planId);
+  }
+
+  /**
+   * Reopen the line manager's comment on a finalized plan. The plan returns to "In review"
+   * with PM scores untouched, so the line manager can edit the comment and finalize again.
+   */
+  async reopenLineManagerComment(actorId: string, planId: string, mailer?: Mailer) {
+    const plan = await this.db.plan.findUnique({
+      where: { id: planId },
+      include: {
+        owner: {
+          select: { fullName: true, lineManager: { select: { fullName: true, email: true } } },
+        },
+      },
+    });
+    if (!plan) {
+      throw notFound("Plan not found.");
+    }
+    if (plan.status !== "FINALIZED") {
+      throw badRequest("The line manager comment can be reopened once the plan is finalized.");
+    }
+
+    await this.db.$transaction([
+      this.db.plan.update({
+        where: { id: planId },
+        data: {
+          status: applyTransition(plan.status, "REOPEN"),
+          lmCommentReopenedAt: new Date(),
+          employeeFeedbackAt: null,
+        },
+      }),
+      this.db.changeLog.create({
+        data: { planId, actorId, action: "LM_COMMENT_REOPENED", metadata: { year: plan.year } },
+      }),
+    ]);
+
+    const lineManager = plan.owner.lineManager;
+    if (mailer && lineManager) {
+      await emailDistinct(mailer, [lineManager], () => ({
+        subject: `Comment reopened · ${plan.owner.fullName} · Impact Plan ${plan.year}`,
+        html: reviewStepEmailHtml({
+          firstName: firstName(lineManager.fullName),
+          heading: "An administrator reopened your comment",
+          paragraphs: [
+            `Your comment on ${plan.owner.fullName}'s Impact Plan ${plan.year} is open for editing again.`,
+            "Update the comment or recommendation, then finalize the plan again.",
+          ],
+        }),
+        text: `Your comment on ${plan.owner.fullName}'s Impact Plan ${plan.year} was reopened. Update it and finalize again.`,
+      }));
     }
 
     return this.getById(planId);
